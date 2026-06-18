@@ -1,9 +1,24 @@
 import { useNavigate } from 'react-router-dom'
 
 const FEATURES = [
-  { emoji: '🔍', title: '취향 분석', desc: '업로드한 의류 이미지의 스타일·색상·패턴을 CLIP AI가 분석합니다.' },
-  { emoji: '👤', title: '체형 분석', desc: 'MediaPipe로 전신 사진을 분석해 BMI·체형·사이즈를 추천합니다.' },
-  { emoji: '✨', title: '정확한 추천', desc: '취향과 체형을 종합해 나에게 딱 맞는 의류를 추천합니다.' },
+  {
+    emoji: '🔍',
+    title: '취향 분석',
+    desc: '업로드한 의류 이미지의 스타일·색상·패턴을 분석합니다.',
+    disabled: false,
+  },
+  {
+    emoji: '👤',
+    title: '체형 분석',
+    desc: '전신 사진 기반 체형 분석 기능입니다.',
+    disabled: true,
+  },
+  {
+    emoji: '✨',
+    title: '정확한 추천',
+    desc: '취향과 체형을 종합한 AI 추천 기능입니다.',
+    disabled: true,
+  },
 ]
 
 export default function HomePage() {
@@ -34,9 +49,24 @@ export default function HomePage() {
       {/* 기능 카드 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-16">
         {FEATURES.map((f) => (
-          <div key={f.title} className="bg-white rounded-2xl border border-gray-100 p-6 text-center shadow-sm hover:shadow-md transition">
-            <div className="text-4xl mb-4">{f.emoji}</div>
+          <div
+            key={f.title}
+            className={`rounded-2xl border p-6 text-center transition
+            ${
+              f.disabled
+                ? 'bg-[#F5F5F5] border-gray-200 opacity-60 cursor-not-allowed'
+                : 'bg-white border-gray-100 shadow-sm hover:shadow-md'
+            }`}
+          >
+            <div className={`text-4xl mb-4 ${f.disabled ? 'grayscale' : ''}`}>
+              {f.emoji}
+            </div>
             <h3 className="text-base font-semibold text-gray-900 mb-2">{f.title}</h3>
+            {f.disabled && (
+              <span className="inline-block mb-2 px-2 py-1 text-xs rounded-full bg-gray-200 text-gray-500">
+                개발 예정
+              </span>
+            )}
             <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
           </div>
         ))}

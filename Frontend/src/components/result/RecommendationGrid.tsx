@@ -5,6 +5,8 @@ import ProductCard from './ProductCard'
 import { SkeletonGrid } from '@/components/common/SkeletonCard'
 import type { CategoryFilter, SortKey } from '@/types'
 
+const disabledCategories = ['하의', '원피스', '아우터']
+
 export default function RecommendationGrid() {
   const {
     activeCategory, sortKey, recommendStatus, wishlistIds,
@@ -13,6 +15,8 @@ export default function RecommendationGrid() {
   } = useAppStore()
 
   const products = getFilteredProducts()
+  const isDisabledCategory =
+    disabledCategories.includes(activeCategory)
   const isLoading = recommendStatus === 'loading'
 
   const handleWishlist = async (productId: string) => {
@@ -47,36 +51,72 @@ export default function RecommendationGrid() {
 
       {/* 카테고리 탭 */}
       <div className="flex gap-2 flex-wrap mb-4" role="tablist">
-        {CATEGORY_FILTERS.map((cat) => (
+        {CATEGORY_FILTERS.map((cat) => {
+          const isDisabled = disabledCategories.includes(cat)
+
+          return (
           <button
-            key={cat} role="tab"
+            key={cat}
+            role="tab"
             aria-selected={activeCategory === cat}
-            onClick={() => setActiveCategory(cat as CategoryFilter)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              activeCategory === cat
+            disabled={isDisabled}
+            onClick={() => {
+              if (!isDisabled) {
+                setActiveCategory(cat as CategoryFilter)
+              }
+            }}
+            className={`
+            px-4 py-1.5 rounded-full text-sm font-medium relative
+            ${
+              isDisabled
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : activeCategory === cat
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+            }
+          `}
+        >
+          {cat}
+
+          {isDisabled && (
+            <span className="
+              absolute -top-2 -right-2
+              text-[10px]
+              bg-gray-300
+              text-gray-600
+              px-1.5 py-0.5
+              rounded-full
+            ">
+              준비중
+            </span>
+          )}
+        </button>
+      )
+    })}
+  </div>
 
       {/* 그리드 */}
-      {isLoading ? (
+      {isDisabledCategory ? (
+        <div className="py-16 text-center">
+          <p className="text-gray-400 text-sm">
+            서비스 준비중입니다.
+          </p>
+        </div>
+      ) : isLoading ? (
         <SkeletonGrid count={6}/>
       ) : products.length === 0 ? (
         <div className="py-16 text-center">
-          <p className="text-gray-400 text-sm">해당 카테고리의 추천 상품이 없습니다.</p>
+          <p className="text-gray-400 text-sm">
+            해당 카테고리의 추천 상품이 없습니다.
+          </p>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-          {products.map((p) => (
-            <ProductCard key={p.id} product={p} onWishlist={handleWishlist}/>
-          ))}
-        </div>
-      )}
+    ) : (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        {products.map((p) => (
+          <ProductCard key={p.id} product={p} onWishlist={handleWishlist}/>
+        ))}
+      </div>
+    )}
 
       {/* 더 보기 (mock에서는 비활성) */}
       <button className="w-full mt-6 py-3 border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-gray-50 transition flex items-center justify-center gap-2">
