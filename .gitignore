@@ -219,3 +219,7 @@ __marimo__/
 
 # Windows Zone.Identifier files (NTFS Alternate Data Streams)
 *.Identifier
+
+
+# CLIP Dataset
+Ai/Clip/archive/
