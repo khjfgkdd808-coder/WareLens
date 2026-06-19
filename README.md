@@ -8,7 +8,7 @@
 
 ## 🛠 1. 담당 분야 및 기술 스택
 * **Role:** Backend 서버 아키텍처 설계 및 API 개발
-* **Language:** Java 25 (OpenJDK/Zulu 25)
+* **Language:** Java 21 (OpenJDK/Zulu 21)
 * **Framework & Library:** Spring Boot, Swagger (springdoc-openapi)
 * **Core Tech:** REST API 설계, 멀티파트 데이터 처리 (Multipart/form-data), 서버 간 통신 (RestTemplate/WebClient)
 
@@ -61,7 +61,7 @@
 ## 📅 5. 개발 로드맵
 
 ### 📌 1단계: 기반 구축 (~06-15)
-* Java 25(Zulu 25) 환경 설정 및 Spring Boot 프로젝트 구성
+* Java 21(Zulu 21) 환경 설정 및 Spring Boot 프로젝트 구성
 * REST API 기본 구조 설계 및 파일 업로드 기능 구현
 
 ### 📌 2단계: 연동 및 규격 확정 (06-16 ~ 06-30)
