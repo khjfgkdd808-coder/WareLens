@@ -1,87 +1,198 @@
-# 🔍 WareLens - Backend
+# WareLens
 
-> **"사용자의 이미지 데이터가 백엔드를 거쳐 AI 모델로 전달되고, 팀원들과 합의된 규격에 따라 추천 결과를 반환하는 견고한 데이터 파이프라인을 구축한다."**
-> 
-> 프론트엔드와 AI 서버(FastAPI) 사이의 데이터 파이프라인을 구축하고, 팀 간 합의된 규격에 따라 안정적인 추천 결과를 제공하는 Spring Boot 기반의 API 서버입니다.
+AI-powered Fashion Recommendation Platform
 
 ---
 
-## 🛠 1. 담당 분야 및 기술 스택
-* **Role:** Backend 서버 아키텍처 설계 및 API 개발
-* **Language:** Java 21 (OpenJDK/Zulu 21)
-* **Framework & Library:** Spring Boot, Swagger (springdoc-openapi)
-* **Core Tech:** REST API 설계, 멀티파트 데이터 처리 (Multipart/form-data), 서버 간 통신 (RestTemplate/WebClient)
+# 1. Project Overview
+
+WareLens는 사용자의 취향 이미지와 신체 정보를 기반으로 개인 맞춤형 의류를 추천하는 AI 기반 웹 서비스이다.
+
+사용자가 선호하는 의류 이미지를 업로드하면 CLIP 기반 취향 분석을 수행하고, 전신 사진 및 신체 정보를 활용한 MediaPipe 기반 체형 분석 결과를 결합하여 적합한 의류와 추천 사이즈를 제공한다.
+
+본 프로젝트는 AI 기술과 웹 서비스를 통합하여 온라인 의류 구매 시 발생하는 스타일 선택 및 사이즈 선택 문제를 해결하는 것을 목표로 한다.
 
 ---
 
-## 🏗 2. 시스템 아키텍처 구조
-프로젝트는 시스템 간 데이터 무결성을 보장하기 위해 다음과 같은 구조로 연동됩니다.
+# 2. Project Goals
 
-[Client (React)] ──(Multipart)──> [Backend (Spring Boot)] ──(REST API)──> [AI Server (FastAPI)]
-     ▲                                   │                                      │
-     └───────────────────────────────────┴──────────(응답 가공 및 전달)──────────┘
+## AI Fashion Recommendation
 
-1. **Client (React):** 사용자의 이미지 업로드 및 결과 확인
-2. **Spring Boot (Backend):** 요청 수신, 데이터 검증, FastAPI 중계, 응답 가공
-3. **FastAPI (AI Server):** 이미지 특징 추출, 추천 알고리즘 수행
+* CLIP 기반 의류 이미지 임베딩 생성
+* 사용자 취향 벡터 생성
+* FAISS 기반 유사 의류 검색
+* 이미지 기반 의류 추천 시스템 구축
 
----
+## Body Analysis & Size Recommendation
 
-## 🤝 3. API 설계 및 규격 합의 (API Contract)
-본 프로젝트는 시스템 간 데이터 무결성을 보장하기 위해 사전 협의된 절차를 준수합니다.
-* **데이터 규격 사전 협의:** AI 및 Frontend 팀과 API 응답 필드명, 데이터 타입, 에러 코드 등을 사전에 정의하고 문서화합니다.
-* **변경 관리:** 데이터 구조 변경 시 팀원 간 사전 공유 및 명세서 업데이트 필수.
+* MediaPipe Pose 기반 신체 랜드마크 추출
+* 키, 몸무게 기반 BMI 계산
+* 신체 비율 분석
+* KS 표준 사이즈표 기반 상의 사이즈 추천
 
-### 📋 예시 규격 (Draft)
-{
-  "status": "success",
-  "recommendedProducts": [
-    { "image_id": "0001", "score": 0.91 }
-  ]
-}
-*(※ 위 규격은 팀원 간 회의를 통해 최종 확정할 예정입니다.)*
+## System Integration
+
+* Spring Boot ↔ FastAPI 연동
+* AI 분석 결과 API 제공
+* React 기반 사용자 서비스 구축
+* Docker 기반 서비스 배포 환경 구성
 
 ---
 
-## 🌟 4. 핵심 구현 기능
-### 💾 데이터 처리
-* **이미지 업로드 API:** 클라이언트로부터 받은 사진을 안전하게 수신 및 저장.
-* **DTO 설계:** UploadRequestDto를 통해 파일 및 메타데이터를 통합 관리.
+# 3. Core Features
 
-### 🔗 서버 간 연동 (Integration)
-* **통신 파이프라인:** RestTemplate을 활용한 FastAPI 호출 및 응답 처리.
-* **방어적 코드:** AI 서버 통신 장애 대응(예외 처리) 및 유효하지 않은 데이터의 필터링.
+## Style Analysis
 
-### 🛡 안정성 및 문서화
-* **유효성 검증:** 라벨링 가이드 기반의 스타일/데이터 검증.
-* **Swagger 연동:** springdoc-openapi를 통한 API 명세서 자동 생성 및 팀원 공유.
+사용자가 업로드한 취향 이미지를 분석하여
+
+* 선호 스타일
+* 주요 색상
+* 주요 패턴
+
+정보를 제공한다.
+
+## Clothing Recommendation
+
+CLIP 임베딩 벡터를 활용하여 사용자의 취향과 유사한 의류를 추천한다.
+
+추천 방식
+
+* 균형형(Balanced)
+* 색상 중심(Color Focus)
+* 스타일 중심(Style Focus)
+
+## Body Analysis
+
+사용자의
+
+* 성별
+* 키
+* 몸무게
+* 전신 사진
+
+정보를 기반으로 신체 특징을 분석한다.
+
+## Size Recommendation
+
+MediaPipe 랜드마크 기반 신체 비율 분석 결과와
+
+KS 표준 사이즈표를 활용하여 추천 상의 사이즈를 제공한다.
 
 ---
 
-## 📅 5. 개발 로드맵
+# 4. System Architecture
 
-### 📌 1단계: 기반 구축 (~06-15)
-* Java 21(Zulu 21) 환경 설정 및 Spring Boot 프로젝트 구성
-* REST API 기본 구조 설계 및 파일 업로드 기능 구현
+User
 
-### 📌 2단계: 연동 및 규격 확정 (06-16 ~ 06-30)
-* 팀원 회의: API 응답 규격(JSON 포맷) 최종 합의
-* FastAPI-Spring 연동 로직 완성 및 규격 기반 데이터 가공 구현
+↓
 
-### 📌 3단계: 통합 및 테스트 (07-01 ~ 07-15)
-* 전체 서비스 통합 테스트 및 데이터 타입 일치 여부 검증
-* 예외 상황 테스트 및 최종 배포 준비
+React Frontend
+
+↓
+
+Spring Boot Backend
+
+↓
+
+FastAPI AI Platform
+
+├─ CLIP Recommendation Engine
+
+└─ MediaPipe Body Analysis Engine
+
+↓
+
+Recommendation Result
+
+↓
+
+Frontend Result Page
 
 ---
 
-## 🚀 6. 향후 확장 계획
-* **인증 시스템:** JWT 기반 회원 관리 도입.
-* **데이터베이스 연동:** 상품 메타데이터 및 추천 이력 관리를 위한 JPA/MySQL 연동.
-* **서비스 최적화:** 대량 요청 처리를 위한 비동기 처리 및 캐싱 전략 도입.
+# 5. Tech Stack
+
+## Frontend
+
+* React
+* TypeScript
+* Tailwind CSS
+
+## Backend
+
+* Java 21 LTS
+* Spring Boot
+* WebClient
+* Swagger (OpenAPI)
+
+## AI Recommendation
+
+* CLIP
+* PyTorch
+* FAISS
+
+## Body Analysis
+
+* MediaPipe Pose
+* OpenCV
+
+## AI Platform
+
+* FastAPI
+* Pydantic
+
+## Infrastructure
+
+* Docker
+* Docker Compose
+* GitHub
 
 ---
 
-## 👥 팀 협업 가이드
-* **AI 팀:** FastAPI 분석 결과를 어떤 JSON 필드로 전달할지 명세 공유.
-* **Frontend 팀:** UI 구현에 필요한 응답 데이터 필드와 구조를 요청.
-* **공통:** 규격 수정 시 반드시 백엔드 담당자에게 사전 통보.
+# 6. Repository Structure
+
+```text
+WareLens
+├─ Ai
+│   ├─ Clip
+│   └─ MediaPipe
+│
+├─ Backend
+├─ Frontend
+├─ Dataset
+├─ Deploy
+├─ Docs
+└─ Tools
+```
+
+---
+
+# 7. MVP Scope
+
+현재 MVP는 상의(TOP) 카테고리를 대상으로 개발한다.
+
+제공 기능
+
+* 취향 이미지 기반 의류 추천
+* 체형 분석 기반 상의 사이즈 추천
+* 추천 근거 제공
+* 취향 분석 결과 제공
+
+---
+
+# 8. Future Expansion
+
+* 하의(BOTTOM) 추천
+* 아우터(OUTER) 추천
+* 브랜드별 사이즈 보정
+* 메타데이터 가중치 기반 추천 고도화
+* 취향 분류기(Classifier) 도입
+* 사용자 맞춤 추천 고도화
+
+---
+
+# 9. Notice
+
+본 서비스의 사이즈 추천은 KS 표준 사이즈표와 사용자의 신체 정보, MediaPipe 기반 신체 비율 분석 결과를 활용한 참고용 추천 기능이다.
+
+실제 의류 브랜드별 사이즈 차이는 반영되지 않으며, 최종 구매 시 브랜드별 실측 사이즈 확인을 권장한다.

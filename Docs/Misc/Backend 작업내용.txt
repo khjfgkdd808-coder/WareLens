@@ -1,0 +1,25 @@
+# Backend (Spring)
+
+## API 설계
+
+- 요청/응답 DTO 설계
+- REST API 설계
+- Swagger 문서화
+
+## 서버 구현
+
+- 이미지 업로드 처리
+- 사용자 입력 처리
+- FastAPI 호출
+- 응답 가공
+
+## 연동
+
+- React ↔ Spring 연동
+- Spring ↔ FastAPI 연동
+
+## 테스트
+
+- API 테스트
+- 예외 처리 검증
+- 통합 테스트 지원

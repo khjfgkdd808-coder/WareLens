@@ -1,0 +1,222 @@
+# WareLens 역할 분담안 (v2)
+
+## 공통 작업
+
+### 데이터 수집 및 전처리 (전원 참여)
+
+* 상품 이미지 정리
+* 파일명 규칙 적용
+* 카테고리 분류
+* 색상 분류
+* 패턴 분류
+* 메타데이터 작성
+* CSV 생성
+* 데이터 검수
+
+※ 데이터셋 확보 후 전원이 참여하여 단기간 내 완료
+
+---
+
+# 역할 1. AI 추천 시스템 (CLIP)
+
+## 설계
+
+* 추천 방식 설계
+* 추천 파이프라인 설계
+* 메타데이터 구조 설계
+* 추천 결과 형식 설계
+
+## AI 개발
+
+* CLIP 임베딩 생성
+* 이미지 벡터 저장
+* 코사인 유사도 검색
+* Top-K 추천 구현
+* 추천 성능 테스트
+
+## API
+
+* 추천 API 설계
+* FastAPI 추천 서버 구현
+* 추천 결과 반환
+
+## 테스트
+
+* 추천 정확도 검증
+* 유사도 비교 테스트
+* 예외 처리 검증
+
+---
+
+# 역할 2. AI 체형 분석 (MediaPipe)
+
+## 설계
+
+* 체형 Feature 정의
+* 사이즈 추천 규칙 설계
+* 브랜드별 사이즈표 구조 설계
+
+## AI 개발
+
+* MediaPipe Pose 적용
+* Landmark 추출
+* 어깨 비율 계산
+* 상하체 비율 계산
+* BMI 계산
+
+## 추천
+
+* Rule-Based 추천 구현
+* 체형 보정 로직 구현
+* 추천 결과 생성
+
+## API
+
+* 체형 분석 API 설계
+* FastAPI 체형 분석 서버 구현
+* 결과 반환
+
+## 테스트
+
+* 다양한 사진 테스트
+* 체형별 결과 검증
+* 예외 케이스 검증
+
+---
+
+# 역할 3. Backend (Spring)
+
+## 설계
+
+* API 명세 작성
+* DTO 설계
+* DB 스키마 설계
+
+## 구현
+
+* Spring 프로젝트 구축
+* 회원 기능
+* 로그인 기능
+* 이미지 업로드 기능
+* 추천 요청 기능
+
+## 연동
+
+* FastAPI 연동
+* 응답 처리
+* 결과 저장
+
+## DB
+
+* User 테이블
+* Product 테이블
+* Recommendation 테이블
+
+## 테스트
+
+* API 테스트
+* 통합 테스트
+
+---
+
+# 역할 4. Integration / AI Platform
+
+## FastAPI 개발
+
+* FastAPI 서버 구축
+* 공통 API 구조 설계
+* 요청/응답 포맷 통일
+* 예외 처리 구현
+
+## 데이터 자동화
+
+* 이미지 파일 자동 정리
+* 파일명 일괄 변경
+* CSV 자동 생성
+* 메타데이터 자동화 스크립트 작성
+
+## 서비스 통합
+
+* React ↔ Spring 연동 지원
+* Spring ↔ FastAPI 연동 지원
+* API 테스트 수행
+* 통합 이슈 분석
+
+## 배포
+
+* Docker 환경 구성
+* 배포 환경 구축
+* 데모 서버 운영
+
+## 추가 기술 검토
+
+* 벡터 DB (FAISS, Chroma 등) 검토
+* 성능 최적화 지원
+* 서비스 구조 개선
+
+---
+
+# 분담안 A (AI 분리)
+
+A : AI 추천 시스템 (CLIP)
+
+B : AI 체형 분석 (MediaPipe)
+
+C : Backend
+
+D : Integration / AI Platform
+
+※ Frontend는 Backend 또는 Integration 담당자가 분담하여 개발
+
+---
+
+# 분담안 B (AI 통합)
+
+A : AI 총괄 (CLIP + MediaPipe)
+
+B : Backend
+
+C : Frontend
+
+D : Integration / AI Platform
+
+※ 현재 프로젝트 진행 상황 기준 가장 추천
+
+---
+
+# 현재 PoC 진행 현황
+
+## 완료
+
+* CLIP 기반 의류 추천 검증 완료
+* MediaPipe 기반 체형 분석 검증 완료
+* Rule-Based 사이즈 추천 검증 완료
+* Spring Boot ↔ FastAPI 통신 검증 완료
+
+## 진행 예정
+
+* React ↔ Spring 연동
+* 이미지 업로드 API 구현
+* 실제 상품 데이터 적용
+* 추천 API 통합
+* UI 구성
+* 통합 테스트
+* 배포 환경 구성
+
+---
+
+# 추천 역할 구조
+
+현재 PoC 진행 상황을 고려할 때 아래 구조를 우선 추천한다.
+
+A : AI 총괄 (CLIP + MediaPipe)
+
+B : Backend
+
+C : Frontend
+
+D : Integration / AI Platform
+
+데이터 수집 및 전처리는 전원 참여
+
+문서 작성, 일정 관리, GitHub 관리는 팀 전체가 함께 진행
