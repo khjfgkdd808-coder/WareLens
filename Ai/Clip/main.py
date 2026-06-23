@@ -31,8 +31,10 @@ TEST_IMG_DIR = Path(__file__).parent / "test_img"
 # 추천 수
 TOP_K = 10
 
-# 시각화에서 보여줄 추천 수 (TOP_K 이하여야 함)
+# 시각화에서 보여줄 추천 수
+# (TOP_K보다 크게 설정해도 자동으로 TOP_K 이하로 보정됩니다)
 TOP_K_DISPLAY = 5
+TOP_K_DISPLAY = min(TOP_K_DISPLAY, TOP_K)
 
 
 def main() -> None:

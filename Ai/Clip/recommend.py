@@ -22,6 +22,16 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from utils import load_image
 
+# ----------------------------------------------------------
+# 한글 폰트 설정 (Windows 기준)
+# - 'Malgun Gothic'(맑은 고딕)은 Windows에 기본 내장된 폰트라
+#   별도 설치 없이 폰트명만 지정하면 한글이 정상 표시됩니다.
+# - macOS/Linux에서 실행한다면 'AppleGothic'(Mac) 또는
+#   설치된 한글 폰트명(예: 'NanumGothic')으로 바꿔주세요.
+# ----------------------------------------------------------
+plt.rcParams['font.family'] = 'Malgun Gothic'
+plt.rcParams['axes.unicode_minus'] = False  # 마이너스 기호 깨짐 방지
+
 
 def compute_clip_scores(
     query_embedding   : np.ndarray,
@@ -171,8 +181,17 @@ def visualize_results(
     display_recs = recommendations[:top_k_display]
     n_cols       = top_k_display
     n_query      = len(query_paths)
-    rank_labels  = ['1st', '2nd', '3rd', '4th', '5th',
-                    '6th', '7th', '8th', '9th', '10th']
+
+    # 순위 라벨을 동적으로 생성 (1st, 2nd, 3rd, 4th, 5th, 6th, ...)
+    # → main.py의 TOP_K_DISPLAY 값을 몇으로 바꿔도 에러 없이 동작함
+    def ordinal(n: int) -> str:
+        if 11 <= n % 100 <= 13:
+            suffix = 'th'
+        else:
+            suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+        return f"{n}{suffix}"
+
+    rank_labels = [ordinal(i) for i in range(1, len(display_recs) + 1)]
 
     fig = plt.figure(figsize=figsize)
     fig.suptitle(
@@ -184,11 +203,14 @@ def visualize_results(
 
     # ----------------------------------------------------------
     # 1행: 쿼리 이미지 (n_cols 칸 중 가운데 정렬)
+    # 쿼리 이미지 수가 n_cols보다 많으면 칸 수를 쿼리 수에 맞춰 확장
+    # (예: TOP_K_DISPLAY=3인데 쿼리를 5장 넣은 경우)
     # ----------------------------------------------------------
-    start_col = (n_cols - n_query) // 2
+    query_cols = max(n_cols, n_query)
+    start_col  = (query_cols - n_query) // 2
 
     for i, path in enumerate(query_paths):
-        ax = fig.add_subplot(2, n_cols, start_col + i + 1)
+        ax = fig.add_subplot(2, query_cols, start_col + i + 1)
         ax.imshow(load_image(path))
         ax.set_title(
             f"[쿼리 {i+1}]\n{os.path.basename(path)}",
@@ -212,10 +234,12 @@ def visualize_results(
     )
 
     # ----------------------------------------------------------
-    # 2행: 추천 결과
+    # 2행: 추천 결과 (1행과 동일한 query_cols 그리드 사용, 가운데 정렬)
     # ----------------------------------------------------------
+    rec_start_col = (query_cols - n_cols) // 2
+
     for i, rec in enumerate(display_recs):
-        ax = fig.add_subplot(2, n_cols, n_cols + i + 1)
+        ax = fig.add_subplot(2, query_cols, query_cols + rec_start_col + i + 1)
         ax.imshow(load_image(rec["path"]))
         ax.set_title(
             f"[{rank_labels[i]}] Top-{rec['rank']}\n"
