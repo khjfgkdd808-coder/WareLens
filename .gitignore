@@ -223,3 +223,9 @@ __marimo__/
 
 # CLIP Dataset
 Ai/Clip/archive/
+Ai/Clip/fashion_dataset/
+Ai/Clip/test_img/
+Ai/Clip/cache/
+
+# numpy cache
+*.npy
