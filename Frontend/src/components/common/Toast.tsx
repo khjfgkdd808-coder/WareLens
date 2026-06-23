@@ -1,16 +1,10 @@
 import { useAppStore } from '@/store/useAppStore'
 
-const COLORS = {
-  success: 'bg-green-500',
-  error:   'bg-red-500',
-  warning: 'bg-yellow-500',
-  info:    'bg-blue-500',
-}
+const COLORS = { success: 'bg-green-500', error: 'bg-red-500', warning: 'bg-yellow-500', info: 'bg-blue-500' }
 
-const Toast = () => {
+export default function Toast() {
   const { toasts, removeToast } = useAppStore()
-  if (toasts.length === 0) return null
-
+  if (!toasts.length) return null
   return (
     <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
       {toasts.map((t) => (
@@ -22,5 +16,3 @@ const Toast = () => {
     </div>
   )
 }
-
-export default Toast
