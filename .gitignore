@@ -226,6 +226,18 @@ Ai/Clip/archive/
 Ai/Clip/fashion_dataset/
 Ai/Clip/test_img/
 Ai/Clip/cache/
+Ai/Clip/result.csv
 
 # numpy cache
 *.npy
+
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

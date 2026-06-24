@@ -16,7 +16,8 @@ from pathlib import Path
 from utils         import get_image_paths, load_image, validate_folder
 from embedding     import load_clip_model, get_average_embedding
 from cache_manager import load_cache
-from recommend     import find_top_k, print_result_table, visualize_results
+from recommend     import find_top_k, print_result_table, visualize_results, save_results_csv
+from metadata      import load_metadata, attach_metadata
 
 # 불필요한 경고 억제
 warnings.filterwarnings('ignore', message='Glyph.*missing from font')
@@ -28,8 +29,11 @@ warnings.filterwarnings('ignore', message='Glyph.*missing from font')
 # 쿼리 이미지 폴더 (main.py 기준 상대경로)
 TEST_IMG_DIR = Path(__file__).parent / "test_img"
 
+# 추천 결과 CSV 저장 경로 (main.py 기준 상대경로)
+RESULT_CSV_PATH = Path(__file__).parent / "result.csv"
+
 # 추천 수
-TOP_K = 10
+TOP_K = 15
 
 # 시각화에서 보여줄 추천 수
 # (TOP_K보다 크게 설정해도 자동으로 TOP_K 이하로 보정됩니다)
@@ -47,7 +51,8 @@ def main() -> None:
     3. 쿼리 이미지 임베딩 생성 (평균 벡터)
     4. 캐시에서 데이터셋 임베딩 로드
     5. Top-K 추천 계산
-    6. 결과 출력 및 시각화
+    6. 메타데이터(category/color/pattern 등) 결합
+    7. 결과 출력(콘솔 간단 출력 + CSV 저장) 및 시각화(전체 필드 표시)
     """
     print("=" * 55)
     print("  의류 이미지 유사도 추천 시스템")
@@ -106,12 +111,23 @@ def main() -> None:
     )
 
     # ----------------------------------------------------------
-    # 6. 결과 출력
+    # 6. 메타데이터 결합 (category, color, pattern 등)
+    # 메타데이터가 없는 이미지는 빈 값("-")으로 채워지고 계속 진행됩니다.
     # ----------------------------------------------------------
-    # 텍스트 테이블 출력
+    print("\n메타데이터 결합 중...")
+    metadata_dict   = load_metadata()
+    recommendations = attach_metadata(recommendations, metadata_dict)
+
+    # ----------------------------------------------------------
+    # 7. 결과 출력
+    # ----------------------------------------------------------
+    # 콘솔에는 간단한 정보만 출력
     print_result_table(query_paths, recommendations)
 
-    # 이미지 시각화 (상위 TOP_K_DISPLAY장만 표시)
+    # 전체 메타데이터 필드가 포함된 결과는 CSV로 저장
+    save_results_csv(recommendations, output_path=str(RESULT_CSV_PATH))
+
+    # 이미지 시각화 (상위 TOP_K_DISPLAY장만 표시, 메타데이터 전체 필드 포함)
     print("결과 시각화 출력 중...")
     visualize_results(
         query_paths     = query_paths,
