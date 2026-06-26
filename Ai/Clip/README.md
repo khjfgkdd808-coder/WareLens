@@ -15,7 +15,8 @@ project/
 │   ├── vectors.npy        # 데이터셋 임베딩 벡터 행렬 (N, 512)
 │   └── filenames.npy      # 데이터셋 이미지 경로 목록
 │
-├── main.py                # 전체 실행 흐름 관리
+├── main.py                # 전체 실행 흐름 관리 (CLI 단독 실행용)
+├── service.py             # 백엔드(FastAPI 등) 연동용 인터페이스
 ├── build_vectors.py       # 데이터셋 임베딩 생성 및 캐시 저장
 ├── detector.py            # YOLO 기반 사람 영역 탐지/crop
 ├── embedding.py           # CLIP 모델 로드 / 이미지 임베딩 생성
@@ -143,7 +144,8 @@ rank,filename,score,clip_score,category,sub_category,article_type,color,season,u
 
 | 파일 | 역할 |
 |---|---|
-| `main.py` | 전체 실행 흐름 관리 |
+| `main.py` | CLI 단독 실행 (콘솔 출력 + 시각화 + CSV 저장) |
+| `service.py` | 백엔드(FastAPI 등) 연동용 인터페이스 |
 | `build_vectors.py` | 데이터셋 임베딩 생성 및 캐시 저장 (YOLO crop 포함) |
 | `detector.py` | YOLO로 사람 영역 탐지 및 crop |
 | `embedding.py` | CLIP 모델 로드, 이미지 → 벡터 변환 |
@@ -186,20 +188,100 @@ TOP_K_DISPLAY = 5    # 시각화에서 보여줄 추천 수
 
 ---
 
+## 백엔드 연동 (FastAPI 등)
+
+`service.py`가 백엔드에서 import할 단일 진입점입니다. 백엔드 담당자는 CLIP/YOLO/캐시 내부 구현을 몰라도 아래 두 함수만 사용하면 됩니다.
+
+### 대응 API 명세
+
+```
+POST /internal/clip/recommend
+Content-Type: multipart/form-data
+
+필드: style_images (File[], 1~3장, jpg/png/webp)
+```
+
+### 사용 예시
+
+```python
+import service
+
+# 서버 시작 시 1회만 호출
+@app.on_event("startup")
+def on_startup():
+    service.initialize()
+
+# 매 요청마다 호출
+@app.post("/internal/clip/recommend")
+async def recommend(style_images: list[UploadFile]):
+    image_bytes_list = [await f.read() for f in style_images]
+    recommendations = service.get_recommendations(image_bytes_list, top_k=10)
+    return {"recommendations": recommendations}
+```
+
+### 함수 스펙
+
+**`service.initialize() -> None`**
+서버 생명주기 동안 단 1회만 호출하세요. CLIP 모델, 데이터셋 임베딩 캐시, metadata.csv를 메모리에 로드합니다. 캐시(`cache/vectors.npy`)가 없으면 에러가 발생하므로 `python build_vectors.py`를 먼저 실행해야 합니다.
+
+**`service.get_recommendations(query_images: list[bytes], top_k: int = 10) -> list[dict]`**
+쿼리 이미지의 바이트 데이터(업로드된 파일을 `.read()`한 결과)를 받아 추천 결과를 반환합니다. 이미지는 1장 이상이면 모두 사용되며, 여러 장이면 평균 임베딩으로 추천합니다.
+
+반환값 예시 (= API 응답의 `recommendations` 배열 항목):
+```python
+[
+    {
+        "rank": 1, "image_name": "15970.jpg", "score": 0.963, "clip_score": 0.963,
+        "category": "TOP", "sub_category": "SHIRT", "article_type": "Shirts",
+        "color": "NAVY", "season": "Fall", "usage": "Casual", "gender": "Men",
+        "pattern": "CHECK", "fit": "SLIM", "fabric": "COTTON",
+    },
+    ...
+]
+```
+
+`initialize()`를 호출하지 않고 `get_recommendations()`를 호출하면 `RuntimeError`가 발생합니다. 이미지 데이터가 올바르지 않으면 `ValueError`가 발생합니다.
+
+### API 명세와의 차이점 (협의된 사항)
+
+| 명세 필드 | 처리 방식 |
+|---|---|
+| `item_id` | 미포함. `image_name`을 식별자로 사용 |
+| `image_url` | 미포함. 백엔드에서 `image_name` 기준으로 정적 파일 경로를 조립 |
+| `style_analysis` | **이번 단계에서 미구현.** `recommendations`만 제공하며, 취향 분석은 1차 고도화 단계에서 별도 추가 예정 |
+| 메타데이터 필드 | 명세보다 많은 11개 필드를 전부 포함 (`article_type`, `season`, `usage`, `gender`, `fit`, `fabric` 추가) — 필요한 필드만 프론트에서 선택적으로 사용 |
+
+---
+
 ## 향후 확장 계획
 
-### 1. 사용자 착용샷 지원
-현재 `main.py`는 옷만 펼쳐놓은 사진만 가정합니다.
+### 1. 취향 분석 (style_analysis) - 1차 고도화
+API 명세의 `style_analysis` 필드는 현재 미구현입니다. 계획된 구현 방식:
+
+1. 업로드된 각 쿼리 이미지를 CLIP으로 데이터셋에서 가장 유사한 이미지 1장에 매칭
+2. 매칭된 이미지들의 `category`, `color`를 모아 비율 집계
+3. `service.py`에 `analyze_style()` 함수를 추가하고, `get_recommendations()`와 함께 호출
+
+```python
+{
+    "style_analysis": {
+        "top_categories": [{"name": "HOODIE", "ratio": 0.60}, ...],
+        "top_colors": ["BLACK", "GRAY"],
+    },
+    "recommendations": [...],
+}
+```
+
+### 2. 사용자 착용샷 지원
+현재 `main.py`/`service.py`는 옷만 펼쳐놓은 사진만 가정합니다.
 사용자가 착용샷을 업로드하는 기능을 추가할 경우, `detector.py`의
-`crop_person_region()`을 `main.py`에도 동일하게 적용하면 됩니다.
+`crop_person_region()`을 적용하면 됩니다.
 (이미 `build_vectors.py`에서 검증된 동일 함수를 재사용)
 
-### 2. 메타데이터 가중치
+### 3. 메타데이터 가중치
 현재는 CLIP 유사도만 사용하지만, 아래와 같이 메타데이터 가중치를 추가할 예정입니다.
 
 ```
-metadata.csv 컬럼: category, sub_category, color, pattern
-
 최종 점수 = CLIP 유사도 * 0.7
           + category 점수 * 0.2
           + color 점수    * 0.1
