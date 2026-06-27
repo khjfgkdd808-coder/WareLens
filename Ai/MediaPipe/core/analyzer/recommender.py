@@ -1,5 +1,3 @@
-# core/analyzer/recommender.py
-
 # 🇰🇷 대한민국 KS 표준 의류 규격 데이터셋 매핑 구조 (남성 K 0050 / 여성 K 0051)
 KS_SIZE_CHART = {
     "MALE": {
