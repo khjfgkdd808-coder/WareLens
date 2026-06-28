@@ -1,29 +1,7 @@
-import { useEffect, useRef } from 'react'
 import type { BodyAnalysisResult } from '@/types'
 import { getBMIInfo } from '@/utils/helpers'
 
 interface Props { data: BodyAnalysisResult }
-
-const BMIGauge = ({ bmi }: { bmi: number }) => {
-  const dotRef = useRef<HTMLDivElement>(null)
-  const pct = Math.min(100, Math.max(0, ((bmi - 15) / 20) * 100))
-  useEffect(() => {
-    const el = dotRef.current; if (!el) return
-    el.style.left = '0%'
-    requestAnimationFrame(() => { el.style.left = `calc(${pct}% - 6px)` })
-  }, [pct])
-  return (
-    <div className="mt-2">
-      <div className="relative h-2 rounded-full flex overflow-visible">
-        <div className="w-[17.5%] h-full bg-blue-300 rounded-l-full"/>
-        <div className="w-[32.5%] h-full bg-green-400"/>
-        <div className="w-[25%] h-full bg-yellow-400"/>
-        <div className="w-[25%] h-full bg-red-400 rounded-r-full"/>
-        <div ref={dotRef} className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 border-gray-600 shadow transition-all duration-700 ease-out" style={{ left: '0%' }}/>
-      </div>
-    </div>
-  )
-}
 
 const MannequinPanel = ({ m }: { m: BodyAnalysisResult['bodyMeasurements'] }) => {
   const rows = [
@@ -61,22 +39,18 @@ const MannequinPanel = ({ m }: { m: BodyAnalysisResult['bodyMeasurements'] }) =>
 }
 
 export default function AnalysisCard({ data }: Props) {
-  const { label, color, bg } = getBMIInfo(data.bmi)
+  // getBMIInfo는 내부 데이터 구조 유지를 위해 호출하되 UI에서는 직접 노출하지 않음
+  const _bmiInfo = getBMIInfo(data.bmi)
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100">
         <h2 className="text-base font-semibold text-gray-900">체형 분석 결과</h2>
       </div>
       <div className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-[130px_160px_1fr_190px] gap-x-6 gap-y-6">
-          <div>
-            <p className="text-xs text-gray-400 mb-1">BMI</p>
-            <p className="text-4xl font-bold text-gray-900 leading-none tabular-nums">{data.bmi}</p>
-            <span className={`inline-block mt-2 text-xs font-semibold px-2 py-0.5 rounded-full ${bg} ${color}`}>{label}</span>
-            <BMIGauge bmi={data.bmi}/>
-            <p className="text-xs text-gray-400 mt-3">체형 분류</p>
-            <p className="text-sm font-semibold text-gray-700 mt-0.5">{data.bodyType}</p>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_190px] gap-x-6 gap-y-6">
+
+          {/* 추천 사이즈 — 메인 강조 */}
           <div>
             <p className="text-xs text-gray-400 mb-1">추천 사이즈</p>
             <p className="text-4xl font-bold text-gray-900 leading-none tabular-nums">
@@ -89,10 +63,31 @@ export default function AnalysisCard({ data }: Props) {
             </div>
             <p className="text-[10px] text-gray-300 mt-3">KS 표준 사이즈 기준</p>
           </div>
+
+          {/* 체형 정보 */}
+          <div>
+            <p className="text-xs text-gray-400 mb-1">체형 분류</p>
+            <p className="text-2xl font-bold text-gray-900 leading-none">{data.bodyType}</p>
+            <div className="mt-3 space-y-1.5">
+              <p className="text-xs text-gray-500">키와 체중 비율, 어깨·골반 폭을 기반으로 분류한 체형 유형입니다.</p>
+            </div>
+          </div>
+
+          {/* 추천 근거 */}
           <div>
             <p className="text-xs text-gray-400 mb-2">추천 근거</p>
             <ul className="space-y-2">
-              {data.reasons.map((r) => (
+              {/* 첫 번째 근거: 체형·치수 중심으로 커스텀 */}
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 mt-0.5 w-4 h-4 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <span className="text-xs text-gray-600 leading-relaxed">
+                  체형 분석 결과와 신체 비율을 기반으로 추천하며, BMI 정보는 참고 데이터로 활용됩니다.
+                </span>
+              </li>
+              {/* 나머지 근거 (첫 번째 건너뛰기) */}
+              {data.reasons.slice(1).map((r) => (
                 <li key={r} className="flex items-start gap-2">
                   <span className="flex-shrink-0 mt-0.5 w-4 h-4 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
                     <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -102,6 +97,8 @@ export default function AnalysisCard({ data }: Props) {
               ))}
             </ul>
           </div>
+
+          {/* 신체 치수 마네킹 패널 */}
           <div className="border-t md:border-t-0 md:border-l border-gray-100 pt-4 md:pt-0 md:pl-4">
             <MannequinPanel m={data.bodyMeasurements}/>
           </div>

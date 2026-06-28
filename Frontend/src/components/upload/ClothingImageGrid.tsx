@@ -1,21 +1,31 @@
 import { useRef, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { validateImageFile } from '@/utils/helpers'
+import { API_ERROR_CONFIG } from '@/utils/constants'
 
 const MAX = 5
 
 export default function ClothingImageGrid() {
-  const { clothingPreviews, addClothingImage, removeClothingImage, addToast } = useAppStore()
+  const {
+    clothingPreviews, addClothingImage, removeClothingImage,
+    addToast, openErrorModal,
+  } = useAppStore()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [drag, setDrag]   = useState(false)
+  const [drag, setDrag] = useState(false)
   const canAdd = clothingPreviews.length < MAX
 
   const process = (files: FileList | null) => {
     if (!files) return
     const arr = Array.from(files).slice(0, MAX - clothingPreviews.length)
+
     for (const f of arr) {
       const err = validateImageFile(f)
-      if (err) { addToast('error', err); return }
+      if (err) {
+        // 파일 형식 오류 → Toast (가벼운 알림)
+        // 파일 크기 오류 → Toast (가벼운 알림)
+        addToast('error', err)
+        return
+      }
       addClothingImage(f)
     }
     if (inputRef.current) inputRef.current.value = ''
@@ -31,7 +41,9 @@ export default function ClothingImageGrid() {
         </svg>
         <div>
           <p className="text-xs font-semibold text-amber-700">한 번에 한 벌의 의류만 올려주세요</p>
-          <p className="text-xs text-amber-600 mt-0.5">옷 전체 형태가 보이는 사진, 단색 배경, 구겨짐 없는 사진을 권장합니다.</p>
+          <p className="text-xs text-amber-600 mt-0.5">
+            옷 전체 형태가 보이는 사진, 단색 배경, 구겨짐 없는 사진을 권장합니다.
+          </p>
         </div>
       </div>
 
@@ -64,9 +76,11 @@ export default function ClothingImageGrid() {
           <div key={p.id} className="relative group aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
             <img src={p.previewUrl} alt={`의류 ${i+1}`}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
-            <button onClick={() => removeClothingImage(p.id)}
+            <button
+              onClick={() => removeClothingImage(p.id)}
               className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-red-500 text-[10px]"
-              aria-label="삭제">✕</button>
+              aria-label="삭제"
+            >✕</button>
             <span className="absolute bottom-1 left-1 w-4 h-4 rounded-full bg-black/50 text-white text-[9px] font-bold flex items-center justify-center">
               {i+1}
             </span>
@@ -77,7 +91,9 @@ export default function ClothingImageGrid() {
         {Array.from({ length: Math.max(0, (canAdd ? MAX - 1 : MAX) - clothingPreviews.length) }).map((_, i) => (
           <div key={`empty-${i}`}
             className="aspect-square rounded-xl border border-dashed border-gray-200 bg-gray-50/50 flex items-center justify-center">
-            <span className="text-[10px] text-gray-300">{clothingPreviews.length + i + (canAdd ? 2 : 1)}</span>
+            <span className="text-[10px] text-gray-300">
+              {clothingPreviews.length + i + (canAdd ? 2 : 1)}
+            </span>
           </div>
         ))}
       </div>
@@ -88,8 +104,15 @@ export default function ClothingImageGrid() {
           {clothingPreviews.length} / {MAX}
         </p>
       </div>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp"
-        multiple className="hidden" onChange={(e) => process(e.target.files)}/>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        multiple
+        className="hidden"
+        onChange={(e) => process(e.target.files)}
+      />
     </div>
   )
 }

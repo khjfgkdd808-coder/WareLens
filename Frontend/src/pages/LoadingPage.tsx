@@ -15,7 +15,8 @@ export default function LoadingPage() {
   const navigate   = useNavigate()
   const {
     analysisStatus, analysisErrorCode,
-    setAnalysisStatus, setAnalysisResult, setAnalysisError, addToast,
+    setAnalysisStatus, setAnalysisResult, setAnalysisError,
+    addToast, openErrorModal,
   } = useAppStore()
   const stepRef  = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -35,7 +36,7 @@ export default function LoadingPage() {
           })
           .catch(() => {
             setAnalysisError('분석 중 오류가 발생했습니다.', 'UNKNOWN')
-            addToast('error', '분석에 실패했습니다.')
+            openErrorModal('ANALYSIS_FAILED', () => navigate('/'))
           })
         return
       }
