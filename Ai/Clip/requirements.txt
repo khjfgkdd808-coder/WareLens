@@ -1,0 +1,8 @@
+torch
+transformers
+Pillow
+scikit-learn
+matplotlib
+tqdm
+ultralytics
+pandas
