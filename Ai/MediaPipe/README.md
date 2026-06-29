@@ -13,11 +13,17 @@ project/
 │   └── pose_landmarker_heavy.task  # MediaPipe AI 모델 가중치 파일
 │
 ├── core/
-│   └── analyzer/
-│       ├── __init__.py
-│       ├── pipeline.py             # OpenCV 이미지 변환 및 관절 좌표 추출
-│       ├── recommender.py          # 사이즈 보정 및 핏 스타일 판정 엔진
+│   ├── analyzer/
+│   │   ├── __init__.py
+│   │   ├── pipeline.py             # OpenCV 이미지 변환 및 관절 좌표 추출
+│   │   └── recommender.py          # 사이즈 보정 및 핏 스타일 판정 엔진
+│   │  
+│   │          
+│   └── generator/
 │       └── run_catvton.py          # CatVTON 모델로 Try-On 구현
+│
+├── CatVTON/                        # CatVTON models
+│
 │
 ├── main.py                         # FastAPI 웹 인터페이스 및 라우터 관리
 └── README.md                       # 이 파일
