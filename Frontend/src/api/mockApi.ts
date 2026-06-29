@@ -1,7 +1,26 @@
-import type { AnalysisResultResponse, Product } from '@/types'
+import type { AnalysisResultResponse, Product, PhotoValidationResult } from '@/types'
 import { MOCK_BODY_ANALYSIS, MOCK_AI_EXPLANATION, MOCK_PRODUCTS } from '@/utils/mockData'
 
 const delay = (ms: number) => new Promise<void>((res) => setTimeout(res, ms))
+
+/**
+ * 전신사진 AI 자동 검증 API (Mock)
+ * 실제 연동 시 이 함수만 교체하면 됩니다.
+ * @param _file - 업로드된 전신사진 File 객체
+ */
+export const validateBodyPhoto = async (_file: File): Promise<PhotoValidationResult> => {
+  await delay(1800) // MediaPipe 처리 시뮬레이션
+  // Mock: 항상 성공 반환 (실제 API 연동 시 서버 응답으로 교체)
+  return {
+    status: 'success',
+    message: '사진 확인 완료',
+    checks: {
+      isFrontFull:   true,
+      isFullBody:    true,
+      isBodyVisible: true,
+    },
+  }
+}
 
 export const uploadImages = async (_fd: FormData): Promise<{ taskId: string }> => {
   await delay(1200)
