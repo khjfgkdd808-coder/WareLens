@@ -10,6 +10,7 @@ main.py - 전체 실행 흐름 관리
     python main.py
 """
 
+import sys
 import warnings
 from pathlib import Path
 
@@ -33,7 +34,7 @@ TEST_IMG_DIR = Path(__file__).parent / "test_img"
 RESULT_CSV_PATH = Path(__file__).parent / "result.csv"
 
 # 추천 수
-TOP_K = 15
+TOP_K = 10
 
 # 시각화에서 보여줄 추천 수
 # (TOP_K보다 크게 설정해도 자동으로 TOP_K 이하로 보정됩니다)
@@ -60,9 +61,14 @@ def main() -> None:
 
     # ----------------------------------------------------------
     # 1. test_img 폴더 확인 및 이미지 경로 수집
+    # validate_folder()/get_image_paths()는 폴더가 없으면 FileNotFoundError를 던집니다.
     # ----------------------------------------------------------
-    validate_folder(TEST_IMG_DIR, "test_img")
-    query_paths = get_image_paths(TEST_IMG_DIR)
+    try:
+        validate_folder(TEST_IMG_DIR, "test_img")
+        query_paths = get_image_paths(TEST_IMG_DIR)
+    except FileNotFoundError as e:
+        print(f"[오류] {e}")
+        sys.exit(1)
 
     if len(query_paths) == 0:
         print("[오류] test_img 폴더에 이미지가 없습니다.")
@@ -96,9 +102,16 @@ def main() -> None:
 
     # ----------------------------------------------------------
     # 4. 캐시에서 데이터셋 임베딩 로드
+    # cache_manager.load_cache()는 캐시가 없으면 FileNotFoundError를 던집니다.
+    # (서버 코드에서는 이 예외를 그대로 잡아 적절한 에러로 변환하지만,
+    #  CLI에서는 사용자가 바로 알 수 있게 안내 메시지를 띄우고 종료합니다)
     # ----------------------------------------------------------
     print("\n[4/4] 데이터셋 임베딩 캐시 로드")
-    dataset_embeddings, dataset_paths = load_cache()
+    try:
+        dataset_embeddings, dataset_paths = load_cache()
+    except FileNotFoundError as e:
+        print(f"[오류] {e}")
+        sys.exit(1)
 
     # ----------------------------------------------------------
     # 5. Top-K 추천 계산

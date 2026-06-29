@@ -17,6 +17,7 @@ project/
 │
 ├── main.py                # 전체 실행 흐름 관리 (CLI 단독 실행용)
 ├── service.py             # 백엔드(FastAPI 등) 연동용 인터페이스
+├── exceptions.py          # 백엔드 연동용 커스텀 예외 클래스
 ├── build_vectors.py       # 데이터셋 임베딩 생성 및 캐시 저장
 ├── detector.py            # YOLO 기반 사람 영역 탐지/crop
 ├── embedding.py           # CLIP 모델 로드 / 이미지 임베딩 생성
@@ -146,6 +147,7 @@ rank,filename,score,clip_score,category,sub_category,article_type,color,season,u
 |---|---|
 | `main.py` | CLI 단독 실행 (콘솔 출력 + 시각화 + CSV 저장) |
 | `service.py` | 백엔드(FastAPI 등) 연동용 인터페이스 |
+| `exceptions.py` | 백엔드 연동용 커스텀 예외 클래스 (에러 코드/HTTP 상태코드) |
 | `build_vectors.py` | 데이터셋 임베딩 생성 및 캐시 저장 (YOLO crop 포함) |
 | `detector.py` | YOLO로 사람 영역 탐지 및 crop |
 | `embedding.py` | CLIP 모델 로드, 이미지 → 벡터 변환 |
@@ -222,10 +224,37 @@ async def recommend(style_images: list[UploadFile]):
 ### 함수 스펙
 
 **`service.initialize() -> None`**
-서버 생명주기 동안 단 1회만 호출하세요. CLIP 모델, 데이터셋 임베딩 캐시, metadata.csv를 메모리에 로드합니다. 캐시(`cache/vectors.npy`)가 없으면 에러가 발생하므로 `python build_vectors.py`를 먼저 실행해야 합니다.
+서버 생명주기 동안 단 1회만 호출하세요. CLIP 모델, 데이터셋 임베딩 캐시, metadata.csv를 메모리에 로드합니다. 캐시(`cache/vectors.npy`)가 없으면 `CacheNotFoundError`가 발생하므로 `python build_vectors.py`를 먼저 실행해야 합니다.
 
 **`service.get_recommendations(query_images: list[bytes], top_k: int = 10) -> list[dict]`**
-쿼리 이미지의 바이트 데이터(업로드된 파일을 `.read()`한 결과)를 받아 추천 결과를 반환합니다. 이미지는 1장 이상이면 모두 사용되며, 여러 장이면 평균 임베딩으로 추천합니다.
+쿼리 이미지의 바이트 데이터(업로드된 파일을 `.read()`한 결과)를 받아 추천 결과를 반환합니다. 이미지는 1장 이상이면 모두 사용되며 **개수 제한이 없습니다** — API 명세상 1~3장 정책은 프론트엔드/백엔드가 관리하고, 이 함수는 입력 개수와 무관하게 평균 임베딩으로 추천을 수행합니다.
+
+### 에러 처리
+
+이 모듈이 발생시키는 모든 예외는 `exceptions.py`의 `ServiceError`(또는 하위 클래스)입니다. 백엔드는 `ServiceError` 하나만 잡아도 모든 케이스를 처리할 수 있고, 필요하면 `code`로 세부 분기도 가능합니다.
+
+```python
+from exceptions import ServiceError
+
+@app.exception_handler(ServiceError)
+async def service_error_handler(request, exc: ServiceError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error_code": exc.code, "message": str(exc)},
+    )
+```
+
+| code | status_code | 발생 상황 |
+|---|---|---|
+| `NOT_INITIALIZED` | 503 | `initialize()` 호출 전 요청이 들어옴 |
+| `CACHE_NOT_FOUND` | 503 | 데이터셋 임베딩 캐시가 없음 (`build_vectors.py` 미실행) |
+| `EMPTY_IMAGE_LIST` | 400 | 업로드된 이미지가 0장 |
+| `INVALID_IMAGE` | 400 | 이미지로 디코딩할 수 없는 데이터 (손상된 파일 포함) |
+| `INVALID_TOP_K` | 400 | `top_k`가 1 미만 등 잘못된 값 |
+| `MODEL_LOAD_FAILED` | 503 | CLIP 모델 로딩 실패 (네트워크 차단 등) |
+| `INFERENCE_FAILED` | 500 | 추론 중 예기치 못한 에러 (GPU 메모리 부족 등) |
+
+> `TOO_MANY_IMAGES`는 `exceptions.py`에 정의는 되어 있지만 `service.py`에서는 사용하지 않습니다. 이미지 개수(1~3장) 제한은 프론트엔드/백엔드의 정책 영역으로 판단해 AI 쪽에서는 강제하지 않기로 결정했습니다. 필요해지면 `service.py`에서 다시 활성화할 수 있습니다.
 
 반환값 예시 (= API 응답의 `recommendations` 배열 항목):
 ```python
@@ -240,7 +269,7 @@ async def recommend(style_images: list[UploadFile]):
 ]
 ```
 
-`initialize()`를 호출하지 않고 `get_recommendations()`를 호출하면 `RuntimeError`가 발생합니다. 이미지 데이터가 올바르지 않으면 `ValueError`가 발생합니다.
+`initialize()`를 호출하지 않고 `get_recommendations()`를 호출하면 `NotInitializedError`(503)가 발생합니다. 자세한 에러 코드는 위 표를 참고하세요.
 
 ### API 명세와의 차이점 (협의된 사항)
 
@@ -248,6 +277,7 @@ async def recommend(style_images: list[UploadFile]):
 |---|---|
 | `item_id` | 미포함. `image_name`을 식별자로 사용 |
 | `image_url` | 미포함. 백엔드에서 `image_name` 기준으로 정적 파일 경로를 조립 |
+| `style_images` 개수(1~3장) | AI 쪽(`service.py`)에서는 개수를 제한하지 않음. 프론트엔드/백엔드가 정책으로 관리 |
 | `style_analysis` | **이번 단계에서 미구현.** `recommendations`만 제공하며, 취향 분석은 1차 고도화 단계에서 별도 추가 예정 |
 | 메타데이터 필드 | 명세보다 많은 11개 필드를 전부 포함 (`article_type`, `season`, `usage`, `gender`, `fit`, `fabric` 추가) — 필요한 필드만 프론트에서 선택적으로 사용 |
 
