@@ -14,9 +14,9 @@ logger = logging.getLogger("WareLensAI")
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.analyzer.pipeline import BodyAnalyzerPipeline
-from core.generator.run_catvton import CatVtonEngine
+from core.analyzer.recommender import StandardSizeRecommender
 
-app = FastAPI(title="WareLens AI Integrated Engine", version="2.0.3")
+app = FastAPI(title="WareLens AI Integrated Engine", version="3.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,21 +29,18 @@ app.add_middleware(
 USER_CACHE = {}
 
 try:
-    logger.info("서버 부팅 중: MediaPipe 모델 및 오피셜 CatVTON 로컬 엔진 조립 시작...")
+    logger.info("서버 부팅 중: MediaPipe 모델 로드 시작...")
     analyzer_pipeline = BodyAnalyzerPipeline(model_path="models/pose_landmarker_heavy.task")
-    catvton_engine = CatVtonEngine()
-    logger.info("모든 AI 핵심 가중치 적재 완료. 엔진 가동을 시작합니다.")
+    logger.info("AI 핵심 가중치 적재 완료.")
 except Exception as e:
     logger.exception("서버 부팅 단계 초기화 치명적 크래시 발생")
     analyzer_pipeline = None
-    catvton_engine = None
 
-@app.post("/api/v1/analyze/body", summary="사용자 전신 랜드마크 분석 및 전역 캐시 적재 API")
+@app.post("/api/v1/analyze/body", summary="3D 부피 기반 체형 분석 및 캐시 적재 API")
 async def analyze_body(
     user_id: str = Form(..., description="유저 고유 ID 식별자", examples=["1차테스트"]),
     height_cm: float = Form(..., description="사용자 키 (cm)", examples=[175.0]),
-    weight_kg: float = Form(..., description="사용자 몸무게 (kg)", examples=[70.0]),
-    gender: str = Form(..., description="사용자 성별 (MALE / FEMALE)", examples=["MALE"]),
+    gender: str = Form(..., description="사용자 성별 (MALE / FEMALE)", examples=["MALE"]), # 💡 weight_kg 제거됨
     file: UploadFile = File(..., description="사용자 정면 전신 사진 원본")
 ):
     if analyzer_pipeline is None:
@@ -52,71 +49,52 @@ async def analyze_body(
     try:
         image_bytes = await file.read()
         
-        # 이름 자동 매핑 레이어
-        analysis_func = None
-        possible_methods = ["run", "analyze", "process", "execute", "execute_analysis", "analyze_body", "process_image"]
+        # 3D 부피 및 랜드마크 분석 파이프라인 실행
+        pipeline_result = analyzer_pipeline.run(image_bytes=image_bytes, actual_height_cm=height_cm)
         
-        for method_name in possible_methods:
-            if hasattr(analyzer_pipeline, method_name):
-                analysis_func = getattr(analyzer_pipeline, method_name)
-                break
-                
-        if analysis_func is None:
-            available_methods = [m for m in dir(analyzer_pipeline) if not m.startswith('_')]
-            raise HTTPException(
-                status_code=500, 
-                detail=f"기존 파이프라인 파일 내부에서 호환 가능한 메서드를 찾지 못했습니다. 목록: {available_methods}"
-            )
-            
-        # 매개변수 개수 불일치 자가 치유 호출
-        try:
-            pipeline_result = analysis_func(image_bytes, height_cm, weight_kg, gender)
-        except TypeError:
-            logger.info("💡 [Adaptive Engine] 기존 메서드가 단일 이미지 수용 스펙(takes 2 args)으로 판명되어 보정 호출을 진행합니다.")
-            pipeline_result = analysis_func(image_bytes)
-        
-        if not pipeline_result["success"]:
+        if not pipeline_result.get("success"):
             return JSONResponse(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                content={"status": "FAIL", "error_message": pipeline_result["error_message"]}
+                content={"status": "FAIL", "error_message": pipeline_result.get("error_message")}
             )
             
-        # 전역 메모리에 동적 캐싱 (Bypass)
+        origin_cv_img = pipeline_result.get("origin_cv_img")
+        if origin_cv_img is None:
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            origin_cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # 전역 메모리에 동적 캐싱
         USER_CACHE[user_id] = {
             "person_bytes": image_bytes,
             "raw_landmarks": pipeline_result["raw_landmarks"],
-            "origin_cv_img": pipeline_result["origin_cv_img"]
+            "origin_cv_img": origin_cv_img
         }
         
-        logger.info(f"[USER_CACHE] 유저 '{user_id}'의 정밀 상반신 랜드마크가 전역 메모리에 완벽 세팅되었습니다.")
-        
-        # KeyError 완벽 방어형 레이어
-        annotated_b64 = None
-        for k in ["annotated_image_base64", "annotated_base64", "image_base64", "base64_image"]:
-            if k in pipeline_result:
-                annotated_b64 = pipeline_result[k]
-                break
-                
+        # KS 표준 규격 추천 엔진 구동
+        recommender = StandardSizeRecommender(
+            height_cm=height_cm,
+            measurements_cm=pipeline_result["measurements_cm"],
+            gender=gender
+        )
+        size_recommendation = recommender.recommend()
+
+        annotated_b64 = pipeline_result.get("annotated_image_base64")
         if not annotated_b64:
-            img_source = pipeline_result.get("annotated_image", pipeline_result.get("origin_cv_img"))
-            if img_source is not None and isinstance(img_source, np.ndarray):
-                _, buffer = cv2.imencode('.jpg', img_source)
-                annotated_b64 = base64.b64encode(buffer).decode('utf-8')
-            else:
-                annotated_b64 = base64.b64encode(image_bytes).decode('utf-8')
+            _, buffer = cv2.imencode('.jpg', origin_cv_img)
+            annotated_b64 = base64.b64encode(buffer).decode('utf-8')
         
         return {
             "status": "SUCCESS",
             "data": {
                 "user_id": user_id,
-                "annotated_image_base64": annotated_b64
+                "annotated_image_base64": annotated_b64,
+                "size_analysis": size_recommendation
             }
         }
-    except HTTPException as he:
-        raise he
     except Exception as e:
         logger.exception("체형 분석 레이어 트랜잭션 에러")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/v1/tryon", summary="오피셜 CatVTON 기반 초고속 가상 피팅 API")
 async def execute_virtual_tryon(
@@ -124,6 +102,7 @@ async def execute_virtual_tryon(
     garment_file: UploadFile = File(None, description="피팅해볼 상의 의류 사진 파일 (직접 업로드 시)"),
     garment_name: str = Form(None, description="CLIP 추천 파트 연계용 파일명 (예: 15970.jpg)")
 ):
+    # 이 부분은 이전에 작성하신 훌륭한 로직 그대로 유지했습니다.
     if catvton_engine is None:
         raise HTTPException(status_code=503, detail="오피셜 가상 피팅 연산 코어가 적재되지 않았습니다.")
         
@@ -139,7 +118,6 @@ async def execute_virtual_tryon(
     try:
         logger.info(f"[Fast Try-On] 유저 {user_id} 세션 메모리 매핑 기동...")
         cached_data = USER_CACHE[user_id]
-        person_bytes = cached_data["person_bytes"]
         raw_landmarks = cached_data["raw_landmarks"]
         origin_cv_img = cached_data["origin_cv_img"]
         
@@ -152,12 +130,8 @@ async def execute_virtual_tryon(
             with open(clip_dataset_path, "rb") as f:
                 garment_bytes = f.read()
                 
-        logger.info("[Main API] 오리지널 CatVTON Core Engine 추론 연산 위임 (MediaPipe Bypass)")
+        logger.info("[Main API] 오리지널 CatVTON Core Engine 추론 연산 위임")
         
-        # =================================================================
-        # 잉여 메모리 할당이었던 person_bytes 인자를 제거하고
-        # 핵심 연산 리소스만 가볍게 직주입하도록 튜닝했습니다.
-        # =================================================================
         tryon_base64 = catvton_engine.execute_tryon(
             garment_bytes=garment_bytes,
             raw_landmarks=raw_landmarks,

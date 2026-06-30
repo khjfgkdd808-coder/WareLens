@@ -1,0 +1,13 @@
+# 가상환경 및 캐시 파일 제외
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# 무거운 AI 가중치 모델 제외 (README.md에 다운로드 명령어가 있으므로 제외하는 것이 정석입니다)
+#models/
+#*.task
+
+# 운영체제 임시 파일 및 캐시 제외
+.DS_Store
+Thumbs.db
