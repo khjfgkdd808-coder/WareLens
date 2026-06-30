@@ -1,0 +1,15 @@
+# Web Framework
+fastapi
+uvicorn
+python-multipart
+
+# Computer Vision & Core AI
+opencv-python
+numpy
+mediapipe
+
+# CatVTON Deep Learning Dependencies (필요시 주석 해제)
+# torch
+# torchvision
+# diffusers
+# transformers
