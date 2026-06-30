@@ -6,3 +6,6 @@ matplotlib
 tqdm
 ultralytics
 pandas
+fastapi
+uvicorn
+python-multipart

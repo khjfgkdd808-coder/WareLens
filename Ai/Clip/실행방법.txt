@@ -1,0 +1,8 @@
+# 패키지 설치 (fastapi, uvicorn, python-multipart 추가됨)
+pip install -r requirements.txt
+
+# 캐시 먼저 생성 (이미 했으면 생략)
+python build_vectors.py
+
+# 서버 실행
+uvicorn app:app --host 0.0.0.0 --port 8001

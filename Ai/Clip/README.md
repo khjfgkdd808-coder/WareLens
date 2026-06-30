@@ -16,6 +16,7 @@ project/
 │   └── filenames.npy      # 데이터셋 이미지 경로 목록
 │
 ├── main.py                # 전체 실행 흐름 관리 (CLI 단독 실행용)
+├── app.py                 # FastAPI 서버 (백엔드 연동 / Swagger UI)
 ├── service.py             # 백엔드(FastAPI 등) 연동용 인터페이스
 ├── exceptions.py          # 백엔드 연동용 커스텀 예외 클래스
 ├── build_vectors.py       # 데이터셋 임베딩 생성 및 캐시 저장
@@ -101,11 +102,31 @@ test_img/
 └── query_002.webp
 ```
 
-### 순서 4 - 추천 실행
+### 순서 4 - 추천 실행 (CLI)
 
 ```bash
 python main.py
 ```
+
+### 순서 4-B - FastAPI 서버 실행 (백엔드 연동 / Swagger 테스트)
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8001
+```
+
+실행 후 브라우저에서 아래 주소로 접속하면 Swagger UI에서 바로 테스트할 수 있습니다.
+
+```
+http://localhost:8001/docs
+```
+
+서버 상태 확인:
+```
+http://localhost:8001/health
+```
+
+> `main.py`(CLI)와 `app.py`(서버)는 완전히 독립적입니다.
+> TOP_K 등 설정값도 각 파일에서 따로 관리합니다.
 
 ---
 
@@ -146,6 +167,7 @@ rank,filename,score,clip_score,category,sub_category,article_type,color,season,u
 | 파일 | 역할 |
 |---|---|
 | `main.py` | CLI 단독 실행 (콘솔 출력 + 시각화 + CSV 저장) |
+| `app.py` | FastAPI HTTP 서버 (백엔드 연동 + Swagger UI) |
 | `service.py` | 백엔드(FastAPI 등) 연동용 인터페이스 |
 | `exceptions.py` | 백엔드 연동용 커스텀 예외 클래스 (에러 코드/HTTP 상태코드) |
 | `build_vectors.py` | 데이터셋 임베딩 생성 및 캐시 저장 (YOLO crop 포함) |
