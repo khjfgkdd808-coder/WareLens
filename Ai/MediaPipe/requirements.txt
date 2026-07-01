@@ -8,8 +8,11 @@ opencv-python
 numpy
 mediapipe
 
-# CatVTON Deep Learning Dependencies (필요시 주석 해제)
-# torch
-# torchvision
-# diffusers
-# transformers
+# CatVTON & SegFormer Deep Learning Dependencies
+torch
+torchvision
+diffusers
+transformers
+accelerate
+huggingface_hub
+pillow

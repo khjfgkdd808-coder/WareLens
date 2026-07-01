@@ -21,10 +21,10 @@ class BodyAnalyzerPipeline:
                 output_segmentation_masks=False
             )
             self.detector = vision.PoseLandmarker.create_from_options(options)
-            logger.info(f"✅ Real-World 3D 체형 분석 엔진 로드 완료")
+            logger.info("✅ Real-World 3D 체형 분석 엔진 로드 완료")
         except Exception:
-            logger.exception(f"❌ 모델 로드 중 오류 발생")
-            raise RuntimeError(f"모델 파일 초기화 실패")
+            logger.exception("❌ 모델 로드 중 오류 발생")
+            raise RuntimeError("모델 파일 초기화 실패")
 
     def _convert_to_mp_image(self, image_bytes: bytes) -> Tuple[np.ndarray, mp.Image]:
         nparr = np.frombuffer(image_bytes, np.uint8)
