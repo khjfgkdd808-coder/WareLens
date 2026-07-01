@@ -17,8 +17,9 @@ const INIT_CHECKLIST: BodyPhotoChecklist = {
 }
 
 // PC 기본 8개, 모바일 대응은 컴포넌트에서 처리
-const PAGE_SIZE_PC     = 8
-const PAGE_SIZE_MOBILE = 6
+// 처음 노출: AI 추천 핵심 4개. 더보기 클릭 시 4개씩 추가
+const PAGE_SIZE_PC     = 4
+const PAGE_SIZE_MOBILE = 4
 
 interface AppStore {
   // ── Upload ─────────────────────────────────────────────────
@@ -184,10 +185,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
           bodyPhotoChecklist: INIT_CHECKLIST })
   },
   isUploadReady: () => {
-    const { clothingPreviews, fullBodyPreview, userInfo, photoValidationStatus } = get()
-    // 체크리스트 대신 AI 자동 검증 통과 여부로 ready 판단
-    return clothingPreviews.length > 0
-      && fullBodyPreview !== null
+    const { fullBodyPreview, userInfo, photoValidationStatus } = get()
+    /**
+     * 필수: 전신 사진(AI 검증 통과) + 키 + 몸무게
+     * 선택: 취향 이미지(clothingPreviews) — AI 추천 받기에 영향 없음
+     */
+    return fullBodyPreview !== null
       && photoValidationStatus === 'success'
       && userInfo.height > 0
       && userInfo.weight > 0

@@ -1,142 +1,202 @@
-import { useEffect, useState } from 'react'
+/**
+ * ResultPage.tsx — AI 추천 + 가상피팅 통합 화면
+ *
+ * UX 구조 (WareLens 방향):
+ *  - 좌 50% : 가상피팅 결과 (사용자 전신 + 선택 옷 착용 결과)
+ *  - 우 50% : 추천 캐러셀 (좌우로 넘기면 즉시 왼쪽 결과 갱신)
+ *  - "이 옷 입어보기" 버튼 없음 — 옷을 넘기는 행위 자체가 가상피팅
+ *  - 추천 사이즈는 상품 정보와 함께 표시 (체형분석 패널의 큰 사이즈 표시 제거)
+ *  - 찜(하트): 추천 영역 내부가 아닌 우측 floating 버튼 + Popover로 분리
+ */
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Share2, RotateCcw, CheckCircle2, Loader2 } from 'lucide-react'
-import { useAppStore } from '@/store/useAppStore'
+import { RotateCcw, Share2, CheckCircle2, Loader2, Sparkles, Heart, X } from 'lucide-react'
+import { useAppStore }          from '@/store/useAppStore'
 import { fetchRecommendations } from '@/api/mockApi'
-import { MOCK_FULLBODY_IMAGE } from '@/utils/mockData'
-import RecommendationGrid from '@/components/result/RecommendationGrid'
-import TryOnResult        from '@/components/result/TryOnResult'
+import { requestTryOn }         from '@/api/tryOnApi'
+import { MOCK_FULLBODY_IMAGE }  from '@/utils/mockData'
 import NoticeCard         from '@/components/common/NoticeCard'
-import type { BodyAnalysisResult } from '@/types'
+import RecommendationGrid from '@/components/result/RecommendationGrid'
+import type { Product } from '@/types'
 
-/*
-  MediaPipe / CLIP / BMI 등의 분석 데이터는 내부 로직에서 활용되며
-  데이터 구조는 유지합니다. UI 표현은 핵심 결과만 표시합니다.
-*/
-const SK_POINTS = [
-  { x: 150, y: 55  }, { x: 142, y: 60  }, { x: 158, y: 60  },
-  { x: 136, y: 66  }, { x: 164, y: 66  }, { x: 150, y: 88  },
-  { x: 88,  y: 118 }, { x: 212, y: 118 }, { x: 66,  y: 178 },
-  { x: 234, y: 178 }, { x: 52,  y: 232 }, { x: 248, y: 232 },
-  { x: 114, y: 228 }, { x: 186, y: 228 }, { x: 108, y: 335 },
-  { x: 192, y: 335 }, { x: 103, y: 435 }, { x: 197, y: 435 },
-]
-const SK_LINES: [number, number][] = [
-  [0,5],[5,6],[5,7],[6,8],[7,9],[8,10],[9,11],
-  [6,12],[7,13],[12,13],[12,14],[13,15],[14,16],[15,17],
-]
-void SK_POINTS; void SK_LINES // 데이터 구조 유지, 향후 API 연동 시 활용
+/* ── 찜(위시리스트) Floating 버튼 + Popover ──────────────────── */
+function WishlistFloatingButton() {
+  const { products, wishlistIds } = useAppStore()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
-/* ─────────────────────────────────────────────────────────────
-   체형 분석 패널
-   - 왼쪽: 상체 중심 사진 (얼굴 ~ 골반)
-   - 오른쪽: 추천 상의 사이즈만 표시
-───────────────────────────────────────────────────────────── */
-function BodyAnalysisPanel({
-  data,
-  imageUrl,
-}: {
-  data: BodyAnalysisResult
-  imageUrl: string | null
-}) {
+  const wishlisted = products.filter((p) => wishlistIds.has(p.id))
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div
+      ref={ref}
+      className="fixed z-40"
+      style={{ right: 20, top: '50%', transform: 'translateY(-50%)' }}
+    >
+      {/* Floating 버튼 — 스크롤해도 고정 */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="찜한 상품"
+        className="relative w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center hover:shadow-xl transition-all"
+      >
+        <Heart
+          className={`w-5 h-5 ${wishlisted.length > 0 ? 'text-red-500' : 'text-gray-400'}`}
+          fill={wishlisted.length > 0 ? 'currentColor' : 'none'}
+        />
+        {wishlisted.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+            {wishlisted.length}
+          </span>
+        )}
+      </button>
 
-      {/* 헤더 */}
-      <div className="px-5 py-3 border-b border-gray-100">
-        <h2 className="text-sm font-semibold text-gray-800">체형 분석 결과</h2>
-      </div>
-
-      {/* 본문: 사진(좌) + 사이즈(우) — 50 : 50 */}
-      <div className="flex flex-col sm:flex-row" style={{ minHeight: 280 }}>
-
-        {/* ── 왼쪽: 상체 중심 사진 ── */}
-        <div className="sm:w-1/2 flex-shrink-0 relative bg-gray-50 overflow-hidden"
-             style={{ minHeight: 280 }}>
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt="상체 사진"
-              className="w-full h-full"
-              style={{
-                objectFit:      'cover',
-                /*
-                  상체(얼굴~골반) 중심으로 크롭
-                  object-position: x center, y 상단에서 15% 지점 시작
-                  → 하체가 잘려 상체가 넓게 표시됨
-                */
-                objectPosition: 'center 10%',
-                maxHeight:      400,
-              }}
-            />
-          ) : (
-            /* 사진 없을 때 placeholder */
-            <div className="flex flex-col items-center justify-center h-full min-h-[280px]">
-              <svg viewBox="0 0 80 100" className="w-20 text-gray-200"
-                   fill="none" stroke="currentColor" strokeWidth="1.5">
-                <ellipse cx="40" cy="12" rx="10" ry="11"/>
-                <path d="M30 23 Q22 32 20 55 H60 Q58 32 50 23 Q45 20 40 20 Q35 20 30 23Z"/>
-                <path d="M20 35 L10 60 Q9 65 14 66 L18 64 L21 48"/>
-                <path d="M60 35 L70 60 Q71 65 66 66 L62 64 L59 48"/>
-                <path d="M30 55 L28 90" stroke="currentColor" strokeWidth="10"
-                      strokeLinecap="round"/>
-                <path d="M50 55 L52 90" stroke="currentColor" strokeWidth="10"
-                      strokeLinecap="round"/>
-              </svg>
-              <p className="text-[11px] text-gray-400 mt-3 text-center leading-relaxed">
-                전신 사진을 업로드하면<br/>여기에 표시됩니다
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* ── 오른쪽: 추천 상의 사이즈 ── */}
-        <div className="sm:w-1/2 flex-shrink-0 border-t sm:border-t-0 sm:border-l border-gray-100
-                        flex flex-col items-center justify-center px-6 py-8 gap-3">
-
-          {/* 레이블 */}
-          <p className="text-xs font-medium text-gray-400 tracking-widest uppercase">
-            추천 사이즈
-          </p>
-
-          {/* 상의 사이즈 — 핵심 강조 */}
-          <div className="text-center">
-            <p
-              className="font-bold text-gray-900 leading-none tabular-nums"
-              style={{ fontSize: 64 }}
-            >
-              {data.recommendedSize.topNumeric}
-            </p>
-            <p className="text-lg font-semibold text-gray-400 mt-1 tracking-wide">
-              ({data.recommendedSize.top})
-            </p>
+      {/* Popover */}
+      {open && (
+        <div
+          className="absolute right-14 top-1/2 -translate-y-1/2 bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden"
+          style={{ width: 260 }}
+        >
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <p className="text-sm font-bold text-gray-900">찜한 상품</p>
+            <button onClick={() => setOpen(false)} aria-label="닫기"
+              className="text-gray-400 hover:text-gray-600 transition">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-
-          {/* 구분선 */}
-          <div className="w-10 h-px bg-gray-200 my-1" />
-
-          {/* 보조 설명 — 최소화 */}
-          <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-            체형 분석을 기반으로<br/>산출된 상의 추천 사이즈입니다
-          </p>
-
+          <div className="max-h-80 overflow-y-auto">
+            {wishlisted.length === 0 ? (
+              <p className="text-xs text-gray-400 text-center py-8">
+                아직 찜한 상품이 없습니다
+              </p>
+            ) : (
+              wishlisted.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition">
+                  <img src={p.imageUrl} alt={p.name}
+                    className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-gray-50" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
+                    <p className="text-[10px] text-gray-400">{p.category}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* ── 가상피팅 결과 패널 (왼쪽 50%) ───────────────────────────── */
+function VirtualFittingPanel({ personImageUrl }: { personImageUrl: string }) {
+  const {
+    tryOnSelectedClothing, tryOnStatus, tryOnResultImageUrl,
+    tryOnError,
+  } = useAppStore()
+
+  /* idle — 안내 문구 (변경된 카피) */
+  if (!tryOnSelectedClothing || tryOnStatus === 'idle') {
+    return (
+      <div className="relative w-full rounded-2xl overflow-hidden bg-gray-100"
+           style={{ aspectRatio: '3/4', maxHeight: 520 }}>
+        <img src={personImageUrl} alt="원본 사진"
+          className="w-full h-full object-cover object-top" />
+        <div className="absolute bottom-4 inset-x-4">
+          <div className="bg-black/55 backdrop-blur-sm rounded-xl px-4 py-3 text-center">
+            <Sparkles className="w-4 h-4 text-blue-300 mx-auto mb-1" />
+            {/* 변경된 안내 문구 */}
+            <p className="text-white text-xs font-medium leading-relaxed">
+              AI 추천 스타일을 넘겨보며<br/>가상 피팅 결과를 확인하세요
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  /* loading */
+  if (tryOnStatus === 'loading') {
+    return (
+      <div className="relative w-full rounded-2xl overflow-hidden bg-blue-50 border border-blue-100"
+           style={{ aspectRatio: '3/4', maxHeight: 520 }}>
+        <img src={personImageUrl} alt="원본" className="w-full h-full object-cover object-top opacity-40" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-9 h-9 text-blue-500 animate-spin" />
+          <div className="text-center">
+            <p className="text-sm font-bold text-blue-700">AI 착용 생성 중</p>
+            <p className="text-xs text-blue-500 mt-1">{tryOnSelectedClothing.name}</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  /* error */
+  if (tryOnStatus === 'error') {
+    return (
+      <div className="w-full rounded-2xl bg-red-50 border border-red-200 flex flex-col items-center justify-center gap-3 py-16"
+           style={{ minHeight: 400 }}>
+        <p className="text-sm font-semibold text-red-700">생성 실패</p>
+        <p className="text-xs text-red-500 text-center px-6">{tryOnError}</p>
+      </div>
+    )
+  }
+
+  /* success — 착용 결과 메인 */
+  if (tryOnStatus === 'success' && tryOnResultImageUrl) {
+    const isMock = tryOnResultImageUrl === personImageUrl
+      || tryOnResultImageUrl === tryOnSelectedClothing.imageUrl
+
+    return (
+      <div className="space-y-3">
+        {isMock && (
+          <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
+            <p className="text-[10px] text-amber-600 font-medium text-center">
+              UI 테스트 모드 — 실제 API 연결 시 합성 이미지가 생성됩니다
+            </p>
+          </div>
+        )}
+        <div className="relative w-full rounded-2xl overflow-hidden border-2"
+             style={{ aspectRatio: '3/4', maxHeight: 520, borderColor: '#86efac' }}>
+          <img src={tryOnResultImageUrl} alt="AI 착용 결과"
+            className="w-full h-full object-cover object-top" />
+          <div className="absolute top-3 left-3">
+            <span className="text-[10px] font-bold text-white bg-green-500 px-2.5 py-1 rounded-full shadow">
+              ✓ AI 착용 결과
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
+
+/* ═══════════════════════════════════════════════════════════════
    ResultPage
-───────────────────────────────────────────────────────────── */
+═══════════════════════════════════════════════════════════════ */
 export default function ResultPage() {
   const { taskId } = useParams<{ taskId: string }>()
   const navigate   = useNavigate()
   const {
     bodyAnalysis, fullBodyPreview,
     setProducts, setRecommendStatus, addToast, openErrorModal,
+    tryOnSelectedClothing, tryOnStatus,
+    setTryOnClothing, setTryOnStatus, setTryOnResult, setTryOnError,
   } = useAppStore()
+
   const [isCopied, setIsCopied] = useState(false)
+  const fullBodyUrl = fullBodyPreview?.previewUrl ?? MOCK_FULLBODY_IMAGE
 
   useEffect(() => {
     if (!taskId) { navigate('/', { replace: true }); return }
@@ -155,26 +215,42 @@ export default function ResultPage() {
               setProducts(p, totalCount, hasMore)
               setRecommendStatus('success')
             })
-            .catch(() => {
-              setRecommendStatus('error')
-              openErrorModal('SERVER_ERROR')
-            })
+            .catch(() => openErrorModal('SERVER_ERROR'))
         })
       })
   }, [taskId])
+
+  /**
+   * 옷을 넘길 때마다 호출 — 클릭이 아니라 "탐색" 자체가 트리거
+   * RecommendationGrid의 onItemChange로 연결
+   */
+  const handleItemChange = async (product: Product) => {
+    if (tryOnSelectedClothing?.id === product.id && tryOnStatus === 'loading') return
+
+    setTryOnClothing({
+      id: product.id, name: product.name,
+      imageUrl: product.imageUrl, category: product.category,
+    })
+    setTryOnStatus('loading')
+
+    try {
+      const res = await requestTryOn({ personImage: fullBodyUrl, clothingImage: product.imageUrl })
+      setTryOnResult(res.resultImageUrl)
+    } catch {
+      setTryOnError('가상 피팅 생성에 실패했습니다.')
+    }
+  }
 
   const handleShare = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
       setIsCopied(true)
-      addToast('success', '결과 링크가 복사됐습니다!')
+      addToast('success', '링크가 복사됐습니다!')
       setTimeout(() => setIsCopied(false), 2500)
     } catch {
       addToast('error', '링크 복사에 실패했습니다.')
     }
   }
-
-  const fullBodyUrl = fullBodyPreview?.previewUrl ?? MOCK_FULLBODY_IMAGE
 
   if (!bodyAnalysis) {
     return (
@@ -183,11 +259,11 @@ export default function ResultPage() {
           <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
             <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
           </div>
-          <p className="text-gray-700 font-semibold mb-1">분석 결과를 불러오는 중입니다</p>
+          <p className="text-gray-700 font-semibold mb-1">AI 추천을 준비하고 있습니다</p>
           <p className="text-sm text-gray-400 mb-5">잠시만 기다려 주세요.</p>
           <button onClick={() => navigate('/')}
             className="text-sm text-blue-600 hover:underline flex items-center gap-1 mx-auto">
-            <RotateCcw className="w-4 h-4" /> 홈으로 돌아가기
+            <RotateCcw className="w-4 h-4" />홈으로
           </button>
         </div>
       </main>
@@ -195,40 +271,70 @@ export default function ResultPage() {
   }
 
   return (
-    <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-10">
 
-      {/* ── 페이지 헤더 ── */}
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-bold text-gray-900">추천 결과</h1>
+      {/* 찜 Floating 버튼 — 스크롤해도 유지 */}
+      <WishlistFloatingButton />
+
+      {/* 헤더 */}
+      <div className="flex items-center justify-between gap-3 mb-6">
+        <div>
+          <p className="text-xs text-blue-500 font-semibold tracking-wide uppercase mb-0.5">AI 추천 완료</p>
+          <h1 className="text-xl font-bold text-gray-900">오늘의 AI 추천 스타일</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={handleShare}
             className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition">
             {isCopied
               ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-500" />복사됨</>
-              : <><Share2 className="w-3.5 h-3.5" />결과 공유</>
+              : <><Share2 className="w-3.5 h-3.5" />공유</>
             }
           </button>
           <button onClick={() => navigate('/')}
             className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">
-            <RotateCcw className="w-3.5 h-3.5" /> 다시 분석
+            <RotateCcw className="w-3.5 h-3.5" />다시 분석
           </button>
         </div>
       </div>
 
-      {/* ── ① 체형 분석 결과 ── */}
-      <BodyAnalysisPanel data={bodyAnalysis} imageUrl={fullBodyUrl} />
+      {/* ── 좌(50%) 가상피팅 / 우(50%) 추천 캐러셀 ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-      {/* ── ② 가상 피팅 결과 ── */}
-      <TryOnResult />
+        {/* ══ 왼쪽 50%: 가상피팅 결과 ══════════════════════ */}
+        <div className="lg:sticky lg:top-20">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+            <h2 className="text-sm font-semibold text-gray-800 mb-3">가상 피팅 결과</h2>
+            <VirtualFittingPanel personImageUrl={fullBodyUrl} />
 
-      {/* ── ③ AI 추천 의류 목록 ── */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <RecommendationGrid />
+            {/* 추천 사이즈 — 상품 정보와 함께 (체형분석 큰 표시 제거됨) */}
+            {tryOnSelectedClothing && (
+              <div className="mt-3 bg-gray-900 rounded-xl px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] text-gray-400">{tryOnSelectedClothing.name}</p>
+                  <p className="text-[10px] text-gray-500">추천 사이즈</p>
+                  <p className="text-xl font-bold text-white tabular-nums">
+                    {bodyAnalysis.recommendedSize.topNumeric}
+                    <span className="text-sm text-gray-400 ml-1">({bodyAnalysis.recommendedSize.top})</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-500">체형 분석 기반</p>
+                  <p className="text-[10px] text-gray-500">자동 산출</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ══ 오른쪽 50%: 추천 캐러셀 ══════════════════════ */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+          <RecommendationGrid onItemChange={handleItemChange} />
+        </div>
       </div>
 
-      {/* ── 주의사항 ── */}
-      <NoticeCard />
-      <div className="h-4" />
+      <div className="mt-6">
+        <NoticeCard />
+      </div>
     </main>
   )
 }
