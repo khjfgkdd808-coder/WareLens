@@ -60,8 +60,8 @@ project/
 
 ```bash
 # 가상환경 생성 및 활성화
-conda create -n warelens_env python=3.10 -y
-conda activate warelens_env
+python3 -m venv venv
+source venv/bin/activate
 
 # 통합 웹 및 딥러닝 비전 분석 필수 패키지 일괄 설치
 pip install fastapi uvicorn python-multipart opencv-python numpy mediapipe torch torchvision diffusers transformers accelerate huggingface_hub pillow
