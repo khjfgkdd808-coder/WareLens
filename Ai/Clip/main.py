@@ -34,7 +34,7 @@ TEST_IMG_DIR = Path(__file__).parent / "test_img"
 RESULT_CSV_PATH = Path(__file__).parent / "result.csv"
 
 # 추천 수
-TOP_K = 10
+TOP_K = 30
 
 # 시각화에서 보여줄 추천 수
 # (TOP_K보다 크게 설정해도 자동으로 TOP_K 이하로 보정됩니다)
