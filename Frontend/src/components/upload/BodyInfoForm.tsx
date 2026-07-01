@@ -48,10 +48,10 @@ export default function BodyInfoForm() {
       {/* 가로 한 줄: 성별 | 키 | 몸무게 */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-        {/* ── 성별 ── */}
+        {/* ── 성별 (작은 선택 카드) ── */}
         <div>
           <p className="text-xs font-semibold text-gray-700 mb-2">성별</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             {GENDER_OPTIONS.map(({ value, emoji, label }) => {
               const isActive = userInfo.gender === value
               return (
@@ -59,32 +59,32 @@ export default function BodyInfoForm() {
                   key={value}
                   type="button"
                   onClick={() => setUserInfo({ gender: value })}
-                  /* ── inline style로 active 상태를 확실히 보장 ── */
+                  /* ── 작은 선택 카드: 패딩/폰트 축소 ── */
                   style={{
                     display:         'flex',
                     alignItems:      'center',
                     justifyContent:  'center',
-                    gap:             '6px',
-                    padding:         '10px 8px',
-                    borderRadius:    '12px',
-                    border:          isActive ? '2px solid #2563eb' : '2px solid #e5e7eb',
-                    backgroundColor: isActive ? '#2563eb'           : '#ffffff',
-                    color:           isActive ? '#ffffff'           : '#6b7280',
+                    gap:             '4px',
+                    padding:         '7px 6px',
+                    borderRadius:    '10px',
+                    border:          isActive ? '2px solid #2563eb' : '1.5px solid #e5e7eb',
+                    backgroundColor: isActive ? '#eff6ff'           : '#ffffff',
+                    color:           isActive ? '#2563eb'           : '#6b7280',
                     fontWeight:      600,
-                    fontSize:        '14px',
+                    fontSize:        '12px',
                     cursor:          'pointer',
                     transition:      'all 0.15s',
-                    boxShadow:       isActive ? '0 1px 4px rgba(37,99,235,0.25)' : 'none',
+                    whiteSpace:      'nowrap',   // 화면 폭 변경 시 텍스트 줄바꿈 방지
+                    minWidth:        0,
+                    overflow:        'hidden',
                   }}
                 >
-                  <span style={{ fontSize: '16px' }}>{emoji}</span>
-                  <span>{label}</span>
+                  <span style={{ fontSize: '13px' }}>{emoji}</span>
+                  <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
                   {isActive && (
-                    <svg
-                      width="14" height="14" viewBox="0 0 24 24"
+                    <svg width="11" height="11" viewBox="0 0 24 24"
                       fill="none" stroke="currentColor" strokeWidth={3}
-                      strokeLinecap="round" strokeLinejoin="round"
-                    >
+                      strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   )}
