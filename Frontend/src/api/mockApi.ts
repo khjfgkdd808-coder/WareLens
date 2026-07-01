@@ -1,5 +1,6 @@
 import type { AnalysisResultResponse, Product, PhotoValidationResult } from '@/types'
 import { MOCK_BODY_ANALYSIS, MOCK_AI_EXPLANATION, MOCK_PRODUCTS } from '@/utils/mockData'
+import { axiosClient } from './axiosClient'
 
 const delay = (ms: number) => new Promise<void>((res) => setTimeout(res, ms))
 
@@ -8,23 +9,37 @@ const delay = (ms: number) => new Promise<void>((res) => setTimeout(res, ms))
  * 실제 연동 시 이 함수만 교체하면 됩니다.
  * @param _file - 업로드된 전신사진 File 객체
  */
-export const validateBodyPhoto = async (_file: File): Promise<PhotoValidationResult> => {
-  await delay(1800) // MediaPipe 처리 시뮬레이션
-  // Mock: 항상 성공 반환 (실제 API 연동 시 서버 응답으로 교체)
-  return {
-    status: 'success',
-    message: '사진 확인 완료',
-    checks: {
-      isFrontFull:   true,
-      isFullBody:    true,
-      isBodyVisible: true,
-    },
-  }
+export const validateBodyPhoto = async (file: File): Promise<PhotoValidationResult> => {
+  const formData = new FormData()
+
+  formData.append('image', file)
+
+  const response = await axiosClient.post(
+    '/api/recommendations/upload',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  )
+
+  return response.data
 }
 
-export const uploadImages = async (_fd: FormData): Promise<{ taskId: string }> => {
-  await delay(1200)
-  return { taskId: `task-${Date.now()}` }
+export const uploadImages = async (fd: FormData): Promise<{ taskId:string }> => {
+
+  const response = await axiosClient.post(
+    '/recommend',
+    fd,
+    {
+      headers:{
+        'Content-Type':'multipart/form-data',
+      }
+    }
+  )
+
+  return response.data
 }
 
 export const getAnalysisResult = async (taskId: string): Promise<AnalysisResultResponse> => {
