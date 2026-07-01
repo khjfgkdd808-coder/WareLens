@@ -25,7 +25,7 @@ project/
 │
 ├── CatVTON/                        # CatVTON 오픈소스 의존성 및 모델 디렉토리
 │
-├── main.py                         # FastAPI 웹 인터페이스 및 통합 파이프라인 라우터
+├── app.py                          # [수정] Lifespan 및 커스텀 에러 규격이 통합된 메인 웹 API 서버
 └── README.md                       # 이 파일
 ```
 
@@ -60,11 +60,17 @@ project/
 
 ```bash
 # 가상환경 생성 및 활성화
-conda create -n warelens_env python=3.10 -y
-conda activate warelens_env
+python3 -m venv venv
+source venv/bin/activate
+
+# CUDA 11.8에 맞는 PyTorch 공식 휠(Wheel) 주소를 지정하여 선행 설치
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+# 그 다음 나머지 의존성 패키지 일괄 설치
+pip install -r requirements.txt
 
 # 통합 웹 및 딥러닝 비전 분석 필수 패키지 일괄 설치
-pip install fastapi uvicorn python-multipart opencv-python numpy mediapipe torch torchvision diffusers transformers accelerate huggingface_hub pillow
+# pip install fastapi uvicorn python-multipart opencv-python numpy mediapipe torch torchvision diffusers transformers accelerate huggingface_hub pillow
 ```
 
 ---
@@ -81,9 +87,9 @@ wget [https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landm
 
 ### 순서 2 - 추천 및 피팅 서버 실행
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8002 --reload
+# [수정] uvicorn 직접 명령 대신 최적화 시드와 Lifespan 매니저가 내장된 스크립트로 실행합니다.
+python app.py
 ```
-실행 후 `http://localhost:8002/docs`에 접속하여 대화형 Swagger UI 문서 및 API 테스트를 진행할 수 있습니다.
 
 ---
 
@@ -140,7 +146,7 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 
 | 파일명 | 역할 |
 |---|---|
-| `main.py` | FastAPI 엔드포인트 라우팅, 전역 메모리 세션 캐싱(`USER_CACHE`), 3D 파이프라인 및 가상 착장 엔진 싱글톤 제어 |
+| `app.py` | [수정] FastAPI 엔드포인트 라우팅, 전역 메모리 세션 캐싱(`USER_CACHE`), 3D 파이프라인 및 가상 착장 엔진 싱글톤 제어 (상대 팀 규격과 일치된 Lifespan 및 공용 에러 레이어 구축) |
 | `core/analyzer/pipeline.py` | MediaPipe의 Z축(깊이) 데이터를 활용하여 3D 거리를 측정하고, Ramanujan의 타원 둘레 공식을 적용해 실제 가슴둘레(cm)와 부피를 산출 |
 | `core/analyzer/recommender.py` | 추출된 가슴둘레(cm)와 키(cm)를 KS K 0050/0051 국가 표준 의류 규격과 대조하여 최적 사이즈 추천 및 몸통 두께 비례에 따른 핏(Fit) 보정 |
 | `core/generator/run_catvton.py` | SegFormer 기반의 목선 개방형 뺄셈 마스킹 처리 및 비율 왜곡이 교정된 오피셜 CatVTON 딥러닝 추론 파이프라인 구동 |
