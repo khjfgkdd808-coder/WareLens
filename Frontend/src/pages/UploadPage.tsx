@@ -5,7 +5,9 @@ import ClothingImageGrid  from '@/components/upload/ClothingImageGrid'
 import FullBodyUploadZone from '@/components/upload/FullBodyUploadZone'
 import BodyInfoForm       from '@/components/upload/BodyInfoForm'
 import NoticeCard         from '@/components/common/NoticeCard'
-import { uploadImages }   from '@/api/mockApi'
+import axiosClient from '@/api/axiosClient'
+//import { uploadImages }   from '@/api/mockApi'
+
 
 const GUIDE = [
   { emoji: '❤️', title: '취향 분석', desc: '업로드한 이미지의 스타일·색상을 AI가 분석합니다.' },
@@ -30,14 +32,30 @@ export default function UploadPage() {
     setIsSubmitting(true)
     showGlobalLoading('이미지를 업로드하고 있습니다...')
     try {
-      const fd = new FormData()
-      clothingPreviews.forEach((p) => fd.append('clothingImages', p.file))
-      fd.append('fullBodyImage', fullBodyPreview.file)
-      fd.append('userInfo', JSON.stringify(userInfo))
-      const { taskId } = await uploadImages(fd)
-      setTaskId(taskId)
-      navigate(`/loading/${taskId}`)
-    } catch {
+  const fd = new FormData()
+  clothingPreviews.forEach((p) => fd.append('clothingImages', p.file))
+  fd.append('fullBodyImage', fullBodyPreview.file)
+
+  // 자바 백엔드가 userInfo 데이터를 정확히 JSON 객체로 파싱할 수 있게 형식을 지정해 주는 작업입니다.
+  const userInfoBlob = new Blob(
+    [JSON.stringify(userInfo)], 
+    { type: 'application/json' }
+  )
+  fd.append('userInfo', userInfoBlob)
+
+  // 가짜 함수 대신 실제 axios 인스턴스로 스프링 부트 주소(/api/recommendations/upload)에 직접 POST 요청을 보냅니다.
+  const response = await axiosClient.post('/api/recommendations/upload', fd, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+
+  // 서버가 돌려준 데이터(response.data)에서 필요한 값을 꺼냅니다.
+  const { taskId } = response.data
+
+  setTaskId(taskId)
+  navigate(`/loading/${taskId}`)
+} catch {
       addToast('error', '업로드에 실패했습니다. 다시 시도해 주세요.')
     } finally {
       setIsSubmitting(false)
