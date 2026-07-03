@@ -1,3 +1,6 @@
+# PyTorch 공식 CUDA 12.1 바이너리 저장소 지정
+--extra-index-url https://download.pytorch.org/whl/cu121
+
 # Web Framework
 fastapi
 uvicorn
@@ -8,7 +11,7 @@ opencv-python
 numpy
 mediapipe
 
-# CatVTON & SegFormer Deep Learning Dependencies
+# CatVTON & SegFormer Deep Learning Dependencies (GPU 가속 동기화)
 torch
 torchvision
 diffusers
