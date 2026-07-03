@@ -70,7 +70,7 @@ pip install -r requirements.txt
 
 # 3. 독립 오픈소스 CatVTON 엔진 소스코드 로컬 직접 다운로드 및 동기화
 # 메인 저장소의 정결함을 위해 가속 엔진은 로컬에서 독립 빌드합니다.
-git clone https://github.com/zhengchong/CatVTON.git CatVTON
+git clone https://github.com/Zheng-Chong/CatVTON.git
 ```
 
 ---
