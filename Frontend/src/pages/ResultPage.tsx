@@ -1,94 +1,64 @@
 /**
- * ResultPage.tsx — AI 추천 + 가상피팅 통합 화면
+ * ResultPageOption1.tsx — 옵션 1
  *
- * UX 구조 (WareLens 방향):
- *  - 좌 50% : 가상피팅 결과 (사용자 전신 + 선택 옷 착용 결과)
- *  - 우 50% : 추천 캐러셀 (좌우로 넘기면 즉시 왼쪽 결과 갱신)
- *  - "이 옷 입어보기" 버튼 없음 — 옷을 넘기는 행위 자체가 가상피팅
- *  - 추천 사이즈는 상품 정보와 함께 표시 (체형분석 패널의 큰 사이즈 표시 제거)
- *  - 찜(하트): 추천 영역 내부가 아닌 우측 floating 버튼 + Popover로 분리
+ * 레이아웃:
+ *  좌 1:1 우 = 전신사진+추천사이즈 | 세로 리스트 5개 (스크롤)
+ *  우측 카드 hover → 큰 미리보기 팝업
  */
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { RotateCcw, Share2, CheckCircle2, Loader2, Sparkles, Heart, X } from 'lucide-react'
+import { RotateCcw, Share2, CheckCircle2, Loader2, Heart, X } from 'lucide-react'
 import { useAppStore }          from '@/store/useAppStore'
 import { fetchRecommendations } from '@/api/mockApi'
 import { requestTryOn }         from '@/api/tryOnApi'
+import { toggleWishlistApi }    from '@/api/mockApi'
 import { MOCK_FULLBODY_IMAGE }  from '@/utils/mockData'
-import NoticeCard         from '@/components/common/NoticeCard'
-import RecommendationGrid from '@/components/result/RecommendationGrid'
+import NoticeCard from '@/components/common/NoticeCard'
 import type { Product } from '@/types'
 
-/* ── 찜(위시리스트) Floating 버튼 + Popover ──────────────────── */
-function WishlistFloatingButton() {
+/* ── 찜 Floating ──────────────────────────────────────────────── */
+function WishlistFloating() {
   const { products, wishlistIds } = useAppStore()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-
   const wishlisted = products.filter((p) => wishlistIds.has(p.id))
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
   }, [])
 
   return (
-    <div
-      ref={ref}
-      className="fixed z-40"
-      style={{ right: 20, top: '50%', transform: 'translateY(-50%)' }}
-    >
-      {/* Floating 버튼 — 스크롤해도 고정 */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label="찜한 상품"
-        className="relative w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center hover:shadow-xl transition-all"
-      >
-        <Heart
-          className={`w-5 h-5 ${wishlisted.length > 0 ? 'text-red-500' : 'text-gray-400'}`}
-          fill={wishlisted.length > 0 ? 'currentColor' : 'none'}
-        />
+    <div ref={ref} className="fixed z-40" style={{ right: 20, top: '50%', transform: 'translateY(-50%)' }}>
+      <button type="button" onClick={() => setOpen(v => !v)} aria-label="찜한 상품"
+        className="relative w-12 h-12 rounded-full bg-white border border-gray-200 shadow-lg flex items-center justify-center hover:shadow-xl transition-all">
+        <Heart className={`w-5 h-5 ${wishlisted.length > 0 ? 'text-red-500' : 'text-gray-400'}`}
+               fill={wishlisted.length > 0 ? 'currentColor' : 'none'} />
         {wishlisted.length > 0 && (
           <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
             {wishlisted.length}
           </span>
         )}
       </button>
-
-      {/* Popover */}
       {open && (
-        <div
-          className="absolute right-14 top-1/2 -translate-y-1/2 bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden"
-          style={{ width: 260 }}
-        >
+        <div className="absolute right-14 top-1/2 -translate-y-1/2 bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden" style={{ width: 260 }}>
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <p className="text-sm font-bold text-gray-900">찜한 상품</p>
-            <button onClick={() => setOpen(false)} aria-label="닫기"
-              className="text-gray-400 hover:text-gray-600 transition">
-              <X className="w-4 h-4" />
-            </button>
+            <button onClick={() => setOpen(false)}><X className="w-4 h-4 text-gray-400" /></button>
           </div>
           <div className="max-h-80 overflow-y-auto">
-            {wishlisted.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-8">
-                아직 찜한 상품이 없습니다
-              </p>
-            ) : (
-              wishlisted.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition">
-                  <img src={p.imageUrl} alt={p.name}
-                    className="w-10 h-10 rounded-lg object-cover flex-shrink-0 bg-gray-50" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
-                    <p className="text-[10px] text-gray-400">{p.category}</p>
+            {wishlisted.length === 0
+              ? <p className="text-xs text-gray-400 text-center py-8">아직 찜한 상품이 없습니다</p>
+              : wishlisted.map(p => (
+                  <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50">
+                    <img src={p.imageUrl} alt={p.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 truncate">{p.name}</p>
+                      <p className="text-[10px] text-gray-400">{p.category}</p>
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
+                ))}
           </div>
         </div>
       )}
@@ -96,103 +66,109 @@ function WishlistFloatingButton() {
   )
 }
 
-/* ── 가상피팅 결과 패널 (왼쪽 50%) ───────────────────────────── */
-function VirtualFittingPanel({ personImageUrl }: { personImageUrl: string }) {
-  const {
-    tryOnSelectedClothing, tryOnStatus, tryOnResultImageUrl,
-    tryOnError,
-  } = useAppStore()
+/* ── 우측 세로 리스트 카드 (hover → 큰 미리보기) ──────────────── */
+function ClothingListCard({
+  product, isSelected, onSelect, onWishlist,
+}: {
+  product: Product; isSelected: boolean
+  onSelect: (p: Product) => void
+  onWishlist: (id: string) => void
+}) {
+  const [hovered, setHovered] = useState(false)
+  const [hoverPos, setHoverPos] = useState<{ top: number }>({ top: 0 })
+  const cardRef = useRef<HTMLDivElement>(null)
 
-  /* idle — 안내 문구 (변경된 카피) */
-  if (!tryOnSelectedClothing || tryOnStatus === 'idle') {
-    return (
-      <div className="relative w-full rounded-2xl overflow-hidden bg-gray-100"
-           style={{ aspectRatio: '3/4', maxHeight: 520 }}>
-        <img src={personImageUrl} alt="원본 사진"
-          className="w-full h-full object-cover object-top" />
-        <div className="absolute bottom-4 inset-x-4">
-          <div className="bg-black/55 backdrop-blur-sm rounded-xl px-4 py-3 text-center">
-            <Sparkles className="w-4 h-4 text-blue-300 mx-auto mb-1" />
-            {/* 변경된 안내 문구 */}
-            <p className="text-white text-xs font-medium leading-relaxed">
-              AI 추천 스타일을 넘겨보며<br/>가상 피팅 결과를 확인하세요
-            </p>
-          </div>
-        </div>
-      </div>
-    )
+  const handleMouseEnter = () => {
+    if (cardRef.current) {
+      const rect = cardRef.current.getBoundingClientRect()
+      setHoverPos({ top: rect.top })
+    }
+    setHovered(true)
   }
 
-  /* loading */
-  if (tryOnStatus === 'loading') {
-    return (
-      <div className="relative w-full rounded-2xl overflow-hidden bg-blue-50 border border-blue-100"
-           style={{ aspectRatio: '3/4', maxHeight: 520 }}>
-        <img src={personImageUrl} alt="원본" className="w-full h-full object-cover object-top opacity-40" />
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <Loader2 className="w-9 h-9 text-blue-500 animate-spin" />
-          <div className="text-center">
-            <p className="text-sm font-bold text-blue-700">AI 착용 생성 중</p>
-            <p className="text-xs text-blue-500 mt-1">{tryOnSelectedClothing.name}</p>
-          </div>
-        </div>
+  return (
+    <div
+      ref={cardRef}
+      onClick={() => onSelect(product)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setHovered(false)}
+      className="relative flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all"
+      style={{
+        borderColor: isSelected ? '#2563eb' : '#e5e7eb',
+        backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
+        transform: hovered ? 'scale(1.01)' : 'scale(1)',
+        boxShadow: hovered ? '0 4px 16px rgba(0,0,0,0.10)' : '0 1px 3px rgba(0,0,0,0.06)',
+      }}
+    >
+      {/* 썸네일 */}
+      <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden bg-gray-50 border border-gray-100">
+        <img src={product.imageUrl} alt={product.name}
+          className="w-full h-full object-cover" />
       </div>
-    )
-  }
 
-  /* error */
-  if (tryOnStatus === 'error') {
-    return (
-      <div className="w-full rounded-2xl bg-red-50 border border-red-200 flex flex-col items-center justify-center gap-3 py-16"
-           style={{ minHeight: 400 }}>
-        <p className="text-sm font-semibold text-red-700">생성 실패</p>
-        <p className="text-xs text-red-500 text-center px-6">{tryOnError}</p>
-      </div>
-    )
-  }
-
-  /* success — 착용 결과 메인 */
-  if (tryOnStatus === 'success' && tryOnResultImageUrl) {
-    const isMock = tryOnResultImageUrl === personImageUrl
-      || tryOnResultImageUrl === tryOnSelectedClothing.imageUrl
-
-    return (
-      <div className="space-y-3">
-        {isMock && (
-          <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-1.5">
-            <p className="text-[10px] text-amber-600 font-medium text-center">
-              UI 테스트 모드 — 실제 API 연결 시 합성 이미지가 생성됩니다
-            </p>
-          </div>
-        )}
-        <div className="relative w-full rounded-2xl overflow-hidden border-2"
-             style={{ aspectRatio: '3/4', maxHeight: 520, borderColor: '#86efac' }}>
-          <img src={tryOnResultImageUrl} alt="AI 착용 결과"
-            className="w-full h-full object-cover object-top" />
-          <div className="absolute top-3 left-3">
-            <span className="text-[10px] font-bold text-white bg-green-500 px-2.5 py-1 rounded-full shadow">
-              ✓ AI 착용 결과
+      {/* 정보 */}
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] text-gray-400 font-medium">{product.category}</p>
+        <p className="text-sm font-semibold text-gray-900 leading-snug truncate">{product.name}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-[10px] font-bold text-white bg-blue-600 px-2 py-0.5 rounded-full">
+            적합도 {Math.round(product.similarityScore)}%
+          </span>
+          {isSelected && (
+            <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+              ✓ 선택됨
             </span>
-          </div>
+          )}
         </div>
       </div>
-    )
-  }
 
-  return null
+      {/* 찜 */}
+      <button type="button"
+        onClick={(e) => { e.stopPropagation(); onWishlist(product.id) }}
+        className="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-red-50 transition">
+        <Heart className={`w-3.5 h-3.5 ${product.isWishlisted ? 'text-red-500' : 'text-gray-400'}`}
+               fill={product.isWishlisted ? 'currentColor' : 'none'} />
+      </button>
+
+      {/* Hover 미리보기 — 카드 왼쪽에 팝업 */}
+      {hovered && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            right: 'calc(50% + 20px)',
+            top: Math.min(hoverPos.top, window.innerHeight - 320),
+            width: 220,
+          }}
+        >
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-2xl overflow-hidden">
+            <div className="aspect-[3/4] w-full bg-gray-50">
+              <img src={product.imageUrl} alt={product.name}
+                className="w-full h-full object-cover" />
+            </div>
+            <div className="p-3">
+              <p className="text-xs font-semibold text-gray-900 text-center truncate">{product.name}</p>
+              <p className="text-[10px] text-gray-400 text-center mt-0.5">{product.category}</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ResultPage
+   ResultPageOption1
 ═══════════════════════════════════════════════════════════════ */
 export default function ResultPage() {
   const { taskId } = useParams<{ taskId: string }>()
   const navigate   = useNavigate()
   const {
     bodyAnalysis, fullBodyPreview,
+    products,
     setProducts, setRecommendStatus, addToast, openErrorModal,
     tryOnSelectedClothing, tryOnStatus,
     setTryOnClothing, setTryOnStatus, setTryOnResult, setTryOnError,
+    toggleWishlist, wishlistIds,
   } = useAppStore()
 
   const [isCopied, setIsCopied] = useState(false)
@@ -208,36 +184,30 @@ export default function ResultPage() {
       })
       .catch(() => {
         setRecommendStatus('error')
-        openErrorModal('RECOMMENDATION_FAILED', () => {
-          setRecommendStatus('loading')
-          fetchRecommendations({ taskId: taskId!, category: '전체', sort: 'similarity' })
-            .then(({ products: p, totalCount, hasMore }) => {
-              setProducts(p, totalCount, hasMore)
-              setRecommendStatus('success')
-            })
-            .catch(() => openErrorModal('SERVER_ERROR'))
-        })
+        openErrorModal('RECOMMENDATION_FAILED')
       })
   }, [taskId])
 
-  /**
-   * 옷을 넘길 때마다 호출 — 클릭이 아니라 "탐색" 자체가 트리거
-   * RecommendationGrid의 onItemChange로 연결
-   */
-  const handleItemChange = async (product: Product) => {
+  const handleSelect = async (product: Product) => {
     if (tryOnSelectedClothing?.id === product.id && tryOnStatus === 'loading') return
-
-    setTryOnClothing({
-      id: product.id, name: product.name,
-      imageUrl: product.imageUrl, category: product.category,
-    })
+    setTryOnClothing({ id: product.id, name: product.name, imageUrl: product.imageUrl, category: product.category })
     setTryOnStatus('loading')
-
     try {
       const res = await requestTryOn({ personImage: fullBodyUrl, clothingImage: product.imageUrl })
       setTryOnResult(res.resultImageUrl)
     } catch {
       setTryOnError('가상 피팅 생성에 실패했습니다.')
+    }
+  }
+
+  const handleWishlist = async (productId: string) => {
+    toggleWishlist(productId)
+    try {
+      await toggleWishlistApi(productId)
+      addToast('success', wishlistIds.has(productId) ? '위시리스트에서 제거됐습니다.' : '위시리스트에 추가됐습니다.')
+    } catch {
+      toggleWishlist(productId)
+      addToast('error', '위시리스트 업데이트에 실패했습니다.')
     }
   }
 
@@ -247,22 +217,19 @@ export default function ResultPage() {
       setIsCopied(true)
       addToast('success', '링크가 복사됐습니다!')
       setTimeout(() => setIsCopied(false), 2500)
-    } catch {
-      addToast('error', '링크 복사에 실패했습니다.')
-    }
+    } catch { addToast('error', '링크 복사에 실패했습니다.') }
   }
+
+  // 상위 5개
+  const top5 = products.slice(0, 5)
 
   if (!bodyAnalysis) {
     return (
-      <main className="min-h-[calc(100vh-56px)] flex items-center justify-center px-4">
+      <main className="min-h-[calc(100vh-56px)] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-            <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
-          </div>
-          <p className="text-gray-700 font-semibold mb-1">AI 추천을 준비하고 있습니다</p>
-          <p className="text-sm text-gray-400 mb-5">잠시만 기다려 주세요.</p>
-          <button onClick={() => navigate('/')}
-            className="text-sm text-blue-600 hover:underline flex items-center gap-1 mx-auto">
+          <Loader2 className="w-7 h-7 text-blue-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-700 font-semibold">AI 추천을 준비하고 있습니다</p>
+          <button onClick={() => navigate('/')} className="mt-4 text-sm text-blue-600 hover:underline flex items-center gap-1 mx-auto">
             <RotateCcw className="w-4 h-4" />홈으로
           </button>
         </div>
@@ -272,9 +239,7 @@ export default function ResultPage() {
 
   return (
     <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-10">
-
-      {/* 찜 Floating 버튼 — 스크롤해도 유지 */}
-      <WishlistFloatingButton />
+      <WishlistFloating />
 
       {/* 헤더 */}
       <div className="flex items-center justify-between gap-3 mb-6">
@@ -285,10 +250,7 @@ export default function ResultPage() {
         <div className="flex items-center gap-2">
           <button onClick={handleShare}
             className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition">
-            {isCopied
-              ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-500" />복사됨</>
-              : <><Share2 className="w-3.5 h-3.5" />공유</>
-            }
+            {isCopied ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-500" />복사됨</> : <><Share2 className="w-3.5 h-3.5" />공유</>}
           </button>
           <button onClick={() => navigate('/')}
             className="flex items-center gap-1.5 text-xs text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition">
@@ -297,44 +259,85 @@ export default function ResultPage() {
         </div>
       </div>
 
-      {/* ── 좌(50%) 가상피팅 / 우(50%) 추천 캐러셀 ── */}
+      {/* ── 1:1 2컬럼 메인 레이아웃 ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-        {/* ══ 왼쪽 50%: 가상피팅 결과 ══════════════════════ */}
+        {/* ══ 좌측: 상체 중심 전신사진 + 추천 사이즈 ══════════ */}
         <div className="lg:sticky lg:top-20">
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-            <h2 className="text-sm font-semibold text-gray-800 mb-3">가상 피팅 결과</h2>
-            <VirtualFittingPanel personImageUrl={fullBodyUrl} />
+            <h2 className="text-sm font-semibold text-gray-800 mb-3">체형 분석 결과</h2>
 
-            {/* 추천 사이즈 — 상품 정보와 함께 (체형분석 큰 표시 제거됨) */}
-            {tryOnSelectedClothing && (
-              <div className="mt-3 bg-gray-900 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] text-gray-400">{tryOnSelectedClothing.name}</p>
-                  <p className="text-[10px] text-gray-500">추천 사이즈</p>
-                  <p className="text-xl font-bold text-white tabular-nums">
-                    {bodyAnalysis.recommendedSize.topNumeric}
-                    <span className="text-sm text-gray-400 ml-1">({bodyAnalysis.recommendedSize.top})</span>
-                  </p>
+            {/* 상체 중심 사진 (object-position: top) */}
+            <div className="relative w-full rounded-xl overflow-hidden bg-gray-100"
+                 style={{ aspectRatio: '3/4', maxHeight: 460 }}>
+              <img src={fullBodyUrl} alt="전신 사진"
+                className="w-full h-full object-cover object-top" />
+              {/* 가상피팅 로딩 오버레이 */}
+              {tryOnStatus === 'loading' && (
+                <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2">
+                  <Loader2 className="w-8 h-8 text-white animate-spin" />
+                  <p className="text-white text-xs font-semibold">AI 착용 생성 중...</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-500">체형 분석 기반</p>
-                  <p className="text-[10px] text-gray-500">자동 산출</p>
+              )}
+              {/* 가상피팅 성공 시 결과 오버레이 */}
+              {tryOnStatus === 'success' && (
+                <div className="absolute top-2 left-2">
+                  <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-1 rounded-full shadow">
+                    ✓ AI 착용 결과
+                  </span>
                 </div>
+              )}
+            </div>
+
+            {/* 추천 사이즈 */}
+            <div className="mt-3 bg-gray-900 rounded-xl px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-gray-400">추천 사이즈</p>
+                <p className="text-2xl font-bold text-white tabular-nums">
+                  {bodyAnalysis.recommendedSize.topNumeric}
+                  <span className="text-sm text-gray-400 ml-1">({bodyAnalysis.recommendedSize.top})</span>
+                </p>
               </div>
-            )}
+              <div className="text-right">
+                <p className="text-[10px] text-gray-500">체형 분석 기반</p>
+                {tryOnSelectedClothing && (
+                  <p className="text-[10px] text-blue-400 mt-0.5 truncate max-w-[120px]">
+                    {tryOnSelectedClothing.name}
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ══ 오른쪽 50%: 추천 캐러셀 ══════════════════════ */}
+        {/* ══ 우측: 세로 리스트 5개 (스크롤 가능) ═════════════ */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <RecommendationGrid onItemChange={handleItemChange} />
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-gray-900">
+              AI 추천 상의
+              <span className="text-xs text-gray-400 font-normal ml-1.5">TOP 5</span>
+            </h2>
+            <p className="text-[10px] text-gray-400">카드에 마우스를 올리면 미리볼 수 있어요</p>
+          </div>
+
+          {/* 세로 리스트 — 스크롤 */}
+          <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: 520 }}>
+            {top5.length === 0
+              ? <div className="py-12 text-center text-sm text-gray-400"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />추천 목록 불러오는 중...</div>
+              : top5.map((product) => (
+                  <ClothingListCard
+                    key={product.id}
+                    product={product}
+                    isSelected={tryOnSelectedClothing?.id === product.id}
+                    onSelect={handleSelect}
+                    onWishlist={handleWishlist}
+                  />
+                ))}
+          </div>
         </div>
       </div>
 
-      <div className="mt-6">
-        <NoticeCard />
-      </div>
+      <div className="mt-6"><NoticeCard /></div>
     </main>
   )
 }

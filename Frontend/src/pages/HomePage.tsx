@@ -170,8 +170,7 @@ export default function HomePage() {
   const steps = [
     { label: '스타일 분석',  sub: clothingPreviews.length > 0 ? '완료' : '선택사항', done: clothingPreviews.length > 0 },
     { label: '체형 분석',    sub: photoValidationStatus === 'success' ? '완료' : '대기', done: photoValidationStatus === 'success' },
-    { label: '추천 생성',    sub: ready ? '준비 완료' : '대기',                        done: ready },
-  ]
+    { label: '추천 생성',    sub: ready ? '준비 완료' : '대기', done: ready },  ]
 
   const handleSubmit = async () => {
     clearUserInfoErrors()
@@ -179,7 +178,6 @@ export default function HomePage() {
     if (photoValidationStatus === 'validating') { addToast('warning', 'AI 사진 검증이 완료될 때까지 기다려 주세요.'); return }
     if (photoValidationStatus !== 'success')    { addToast('error', '전신 사진 AI 검증을 통과해야 합니다.'); return }
     if (!userInfo.height) { setUserInfoError('height', '키를 입력해 주세요.'); return }
-    if (!userInfo.weight) { setUserInfoError('weight', '몸무게를 입력해 주세요.'); return }
 
     setIsSubmitting(true)
     showGlobalLoading('AI가 스타일을 분석 중입니다...')
@@ -354,8 +352,8 @@ export default function HomePage() {
               ? '전신 사진을 등록해 주세요'
               : photoValidationStatus !== 'success'
               ? '사진 AI 검증 중...'
-              : !userInfo.height || !userInfo.weight
-              ? '신체 정보를 입력해 주세요'
+              : !userInfo.height
+              ? '신체 정보(키)를 입력해 주세요'
               : 'AI 추천 준비 완료!'}
           </p>
 

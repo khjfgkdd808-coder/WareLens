@@ -186,14 +186,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
   isUploadReady: () => {
     const { fullBodyPreview, userInfo, photoValidationStatus } = get()
-    /**
-     * 필수: 전신 사진(AI 검증 통과) + 키 + 몸무게
-     * 선택: 취향 이미지(clothingPreviews) — AI 추천 받기에 영향 없음
-     */
     return fullBodyPreview !== null
       && photoValidationStatus === 'success'
       && userInfo.height > 0
-      && userInfo.weight > 0
   },
   isChecklistDone: () => get().photoValidationStatus === 'success',
 

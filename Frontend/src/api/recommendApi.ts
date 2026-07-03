@@ -1,8 +1,3 @@
-/**
- * recommendApi.ts
- * Backend 통합 추천 API 호출 모듈
- */
-
 import axiosClient from './axiosClient'
 import type {
   RecommendRequest,
@@ -13,11 +8,9 @@ import type {
   Season,
 } from '@/types'
 
-
-// ─────────────────────────────────────────────
-// 타입 변환
-// ─────────────────────────────────────────────
-
+// ─────────────────────────────
+// 카테고리 매핑
+// ─────────────────────────────
 const mapCategory = (subCategory: string): ProductCategory => {
   const map: Record<string, ProductCategory> = {
     '반팔 티셔츠': '반팔 티셔츠',
@@ -37,139 +30,84 @@ const mapCategory = (subCategory: string): ProductCategory => {
   return map[subCategory] ?? '전체 상의'
 }
 
-
+// ─────────────────────────────
+// Recommendation → Product
+// ─────────────────────────────
 export const mapRecommendationToProduct = (
   rec: Recommendation
 ): Product => ({
   id: String(rec.item_id),
-
   name: `${rec.sub_category} (${rec.color})`,
-
   category: mapCategory(rec.sub_category),
-
   imageUrl: rec.image_url,
-
   price: 0,
-
   colors: [rec.color],
-
   similarityScore: Math.round(rec.score * 100),
-
   recommendBadges: [],
-
   season: (rec.season ?? 'all') as Season,
-
   isWishlisted: false,
 })
 
-
-// ─────────────────────────────────────────────
-// ⭐ 실제 백엔드 연결
-// POST /api/recommendations/upload
-// ─────────────────────────────────────────────
-
+// ─────────────────────────────
+// ⭐ 실제 API
+// ─────────────────────────────
 export const postRecommend = async (
   req: RecommendRequest
 ): Promise<RecommendResponse> => {
 
-
   const formData = new FormData()
 
+  // ✔ 필수값 3개 (누락 금지)
+  formData.append('gender', req.gender)
+  formData.append('height_cm', String(req.height_cm))
 
-  formData.append(
-    'gender',
-    req.gender
-  )
+  // ✅ 여기 (몸무게 다시 포함)
+  formData.append('weight_kg', String(req.weight_kg))
 
+  formData.append('body_image', req.body_image)
 
-  formData.append(
-    'height_cm',
-    String(req.height_cm)
-  )
-
-
-  formData.append(
-    'weight_kg',
-    String(req.weight_kg)
-  )
-
-
-  formData.append(
-    'body_image',
-    req.body_image
-  )
-
-
+  // 스타일 이미지 배열
   req.style_images.forEach((img) => {
-
-    formData.append(
-      'style_images',
-      img
-    )
-
+    formData.append('style_images', img)
   })
 
+  const { data } = await axiosClient.post<RecommendResponse>(
+    '/recommendations/upload',
+    formData
+  )
 
-  const { data } =
-    await axiosClient.post<RecommendResponse>(
-      '/api/recommendations/upload',
-      formData,
-      {
-        headers: {
-          'Content-Type':
-            'multipart/form-data',
-        },
-      }
-    )
-
+  console.group('📥 Spring Boot Response')
+  console.log(data)
+  console.groupEnd()
 
   return data
 }
 
-
-
-// ─────────────────────────────────────────────
-// 응답 → Product 변환
-// ─────────────────────────────────────────────
-
+// ─────────────────────────────
+// 응답 → Product
+// ─────────────────────────────
 export const extractProducts = (
   res: RecommendResponse
 ): Product[] => {
-
-  return res.data.recommendations.map(
-    mapRecommendationToProduct
-  )
-
+  return res.data.recommendations.map(mapRecommendationToProduct)
 }
 
-
-
-// ─────────────────────────────────────────────
-// Try-On 임시
-// ─────────────────────────────────────────────
-
-export const requestTryOnPlaceholder = async (
-  params: {
-    personImageUrl: string
-    clothing: {
-      item_id: number
-      image_url: string
-      sub_category: string
-      color: string
-    }
+// ─────────────────────────────
+// TryOn placeholder
+// ─────────────────────────────
+export const requestTryOnPlaceholder = async (params: {
+  personImageUrl: string
+  clothing: {
+    item_id: number
+    image_url: string
+    sub_category: string
+    color: string
   }
-): Promise<{ resultImageUrl: string }> => {
+}): Promise<{ resultImageUrl: string }> => {
 
-
-  console.log(
-    '[TryOn] TODO',
-    params.clothing
-  )
-
+  console.log('[TryOn]', params.clothing)
 
   return {
-    resultImageUrl:
-      params.clothing.image_url,
+    resultImageUrl: params.clothing.image_url,
   }
-
 }
