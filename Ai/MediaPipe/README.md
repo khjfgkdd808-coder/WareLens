@@ -11,7 +11,7 @@ MediaPipe Pose Landmarker의 Z축(깊이) 데이터를 활용하여 단 한 장�
 ```text
 project/
 │
-├── model/                          # [최신화] 타 파트와의 자원 매핑 규격을 통일한 전역 모델 폴더
+├── models/                         # [최신화] 타 파트와의 자원 매핑 규격을 통일한 전역 모델 폴더
 │   └── analyzer_pose_heavy.task    # [최신화] 체형 분석용 포즈 추정 3D 핵심 가중치 파일
 │
 ├── core/
@@ -70,7 +70,7 @@ pip install -r requirements.txt
 
 # 3. 독립 오픈소스 CatVTON 엔진 소스코드 로컬 직접 다운로드 및 동기화
 # 메인 저장소의 정결함을 위해 가속 엔진은 로컬에서 독립 빌드합니다.
-git clone [https://github.com/zhengchong/CatVTON.git](https://github.com/zhengchong/CatVTON.git) CatVTON
+git clone https://github.com/zhengchong/CatVTON.git CatVTON
 ```
 
 ---
@@ -81,8 +81,13 @@ git clone [https://github.com/zhengchong/CatVTON.git](https://github.com/zhengch
 서버 부팅 단계 크래시를 방지하기 위해 구동 전에 반드시 아래 가중치 파일을 외부에서 다운로드하여 최상위 `model/` 디렉토리 하위에 배치해야 합니다. CatVTON 및 SegFormer 가중치는 서버 기동 시 HuggingFace Hub를 통해 최초 1회 자동으로 통합 격리 다운로드됩니다.
 
 ```bash
-mkdir model
-wget [https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task) -O model/analyzer_pose_heavy.task
+mkdir models
+
+wget https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task -O models/analyzer_pose_heavy.task
+
+혹은
+
+curl -L https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task -o models/analyzer_pose_heavy.task
 ```
 
 ### 순서 2 - 추천 및 피팅 서버 실행

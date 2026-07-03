@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     try:
         # Track A: 체형 분석 가중치 초기화
         logger.info("[Lifespan] Loading Track A: MediaPipe Real-World 3D pipeline...")
-        _state["analyzer_pipeline"] = BodyAnalyzerPipeline(model_path="model/analyzer_pose_heavy.task")
+        _state["analyzer_pipeline"] = BodyAnalyzerPipeline(model_path="models/analyzer_pose_heavy.task")
         
         # Track B: 가상 피팅 가중치 초기화
         logger.info("[Lifespan] Loading Track B: SegFormer & Official CatVTON pipeline...")

@@ -13,7 +13,7 @@ from mediapipe.tasks.python import vision
 logger = logging.getLogger("WareLensAI")
 
 class BodyAnalyzerPipeline:
-    def __init__(self, model_path: str = "model/analyzer_pose_heavy.task", **kwargs):
+    def __init__(self, model_path: str = "models/analyzer_pose_heavy.task", **kwargs):
         try:
             # 실행 위치에 구애받지 않도록 파일 시스템 상대 경로 자동 보정 로직
             if not os.path.isabs(model_path):
