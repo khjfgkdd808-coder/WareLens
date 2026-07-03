@@ -1,10 +1,11 @@
 import sys
 import os
 import csv
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
-                             QVBoxLayout, QLabel, QListWidget, QProgressBar, 
-                             QMessageBox, QGridLayout, QPushButton, QFrame, QLineEdit)
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
+                             QVBoxLayout, QLabel, QListWidget, QProgressBar,
+                             QMessageBox, QGridLayout, QPushButton, QFrame, QLineEdit,
+                             QSizePolicy)
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QPixmap, QTransform, QKeyEvent, QFont, QImage
 
 def get_base_path():
@@ -18,11 +19,11 @@ class WareLensApp(QMainWindow):
         self.image_list = image_list
         self.csv_path = os.path.join(get_base_path(), "labels.csv")
         self.current_idx = 0
-        self.rotation = 0      
-        self.labels_data = {}   
-        self.current_step = "category" 
+        self.rotation = 0
+        self.labels_data = {}
+        self.current_step = "category"
         self.chosen_category = None
-        self.chosen_sub_category = None 
+        self.chosen_sub_category = None
         self.chosen_color = None
         self.chosen_pattern = None
 
@@ -41,7 +42,7 @@ class WareLensApp(QMainWindow):
         self.shortcut_keys = [Qt.Key.Key_1, Qt.Key.Key_2, Qt.Key.Key_3, Qt.Key.Key_4, Qt.Key.Key_5,
                               Qt.Key.Key_6, Qt.Key.Key_7, Qt.Key.Key_8, Qt.Key.Key_9,
                               Qt.Key.Key_Q, Qt.Key.Key_W, Qt.Key.Key_E, Qt.Key.Key_R, Qt.Key.Key_T, Qt.Key.Key_Y]
-        
+
         self.init_ui()
         self.init_csv_data()
         self.jump_to_first_incomplete()
@@ -49,20 +50,18 @@ class WareLensApp(QMainWindow):
         self.setFocus()
 
     def init_csv_data(self):
-        self.labels_data = {}  
-        
+        self.labels_data = {}
+
         if os.path.exists(self.csv_path):
             with open(self.csv_path, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
-                header = next(reader, None)  
-                
+                header = next(reader, None)
+
                 for row in reader:
-                    
-                    if row and len(row) >= 5: 
-                        fname = row[0] 
-                        data = row[1:] 
-                        self.labels_data[fname] = data 
-                        print(f"DEBUG: {fname} 데이터를 저장했습니다.")
+                    if row and len(row) >= 5:
+                        fname = row[0]
+                        data = row[1:]
+                        self.labels_data[fname] = data
         else:
             self.save_to_csv()
 
@@ -103,18 +102,17 @@ class WareLensApp(QMainWindow):
         root_layout = QVBoxLayout(central_widget)
         main_layout = QHBoxLayout()
 
-        
         left_layout = QVBoxLayout()
         prog_header = QHBoxLayout()
         prog_header.addWidget(QLabel("<b>진행률</b>"))
         prog_header.addStretch()
         self.prog_text = QLabel("0 / 0 (0%)")
-        prog_header.addWidget(self.prog_text) 
+        prog_header.addWidget(self.prog_text)
         left_layout.addLayout(prog_header)
-        
+
         self.prog_bar = QProgressBar()
         left_layout.addWidget(self.prog_bar)
-        
+
         status_badge_layout = QHBoxLayout()
         self.badge_done = QLabel("✔ 완료 0")
         self.badge_done.setStyleSheet("color: #4CD964; background-color: #1A2E1F; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
@@ -124,7 +122,7 @@ class WareLensApp(QMainWindow):
         status_badge_layout.addWidget(self.badge_todo)
         status_badge_layout.addStretch()
         left_layout.addLayout(status_badge_layout)
-        
+
         left_layout.addWidget(QLabel("<br><b>이미지 목록</b>"))
         self.file_list_widget = QListWidget()
         self.file_list_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -132,18 +130,6 @@ class WareLensApp(QMainWindow):
         self.file_list_widget.itemClicked.connect(self.on_list_item_clicked)
         left_layout.addWidget(self.file_list_widget)
         main_layout.addLayout(left_layout, stretch=1)
-        def keyPressEvent(self, event: QKeyEvent):
-            key = event.key()
-            modfs = event.modifiers()
-
-            if key == Qt.Key.Key_Left:
-                self.prev_image()
-                event.accept()
-                return
-            elif key == Qt.Key.Key_Right:
-                self.next_image()
-                event.accept()
-                return
 
         center_layout = QVBoxLayout()
         img_header = QHBoxLayout()
@@ -152,17 +138,19 @@ class WareLensApp(QMainWindow):
         img_header.addWidget(self.filename_label)
         img_header.addStretch()
         center_layout.addLayout(img_header)
-        
+
         self.image_label = QLabel("이미지 영역")
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("background-color: #0B0B0D; border: 1px solid #222226; border-radius: 8px;")
-        center_layout.addWidget(self.image_label)
+        # 이미지 영역이 남는 공간을 꽉 채우도록 설정 (중앙 정렬 문제 해결의 핵심)
+        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.image_label.setMinimumSize(1, 1)
+        center_layout.addWidget(self.image_label, stretch=1)
         main_layout.addLayout(center_layout, stretch=3)
 
-        
         right_layout = QVBoxLayout()
         right_layout.addWidget(QLabel("<b>라벨 입력 패널</b>"))
-        
+
         self.lbl_title_cate = QLabel("카테고리")
         right_layout.addWidget(self.lbl_title_cate)
         self.cate_grid = QGridLayout()
@@ -189,13 +177,12 @@ class WareLensApp(QMainWindow):
         self.pattern_btn_map = {}
         self.build_shortcut_grid(self.patterns_list, self.pattern_btn_map, self.pattern_grid, self.set_pattern_state)
         right_layout.addLayout(self.pattern_grid)
-        
+
         right_layout.addWidget(QLabel("<b>특이사항 (Note) 입력</b>"))
         self.note_input = QLineEdit()
         self.note_input.setPlaceholderText("검수 필요 사유 등 기록 (선택 사항)")
-        self.note_input.focusInEvent = lambda e: self.note_input.setFocus()
         right_layout.addWidget(self.note_input)
-        
+
         right_layout.addWidget(QLabel("<br><b>현재 라벨 상태 요약</b>"))
         summary_layout = QHBoxLayout()
         self.lbl_sum_cate = QLabel("미선택"); self.lbl_sum_cate.setStyleSheet("background-color: #5856D6; padding: 6px; border-radius: 4px; font-weight: bold; qproperty-alignment: 'AlignCenter';")
@@ -210,18 +197,17 @@ class WareLensApp(QMainWindow):
 
         main_layout.addLayout(right_layout, stretch=1)
         root_layout.addLayout(main_layout, stretch=1)
-        
-        
+
         bottom_frame = QFrame()
         bottom_frame.setStyleSheet("background-color: #1B1B1F; border-radius: 5px;")
         bottom_guide_bar = QHBoxLayout(bottom_frame)
         bottom_guide_bar.setContentsMargins(10, 8, 10, 8)
-        
+
         lbl_guide_title = QLabel("기능 단축키 안내")
         lbl_guide_title.setStyleSheet("font-weight: bold; color: #5856D6; margin-right: 10px;")
         lbl_guide_text = QLabel("<b>[1~9, Q,W,E,R,T,Y]</b>: 항목 선택  |  <b>← / →</b>: 이전/다음 이미지  |  <b>Backspace</b>: 이전 단계 이동  |  <b>Ctrl+Z</b>: 라벨 초기화  |  <b>Ctrl+R</b>: 우회전(90°)  |  <b>Shift+R</b>: 좌회전(90°)  |  <b>Space / Enter</b>: 저장 후 다음 이미지")
         lbl_guide_text.setStyleSheet("color: #8E8E93; font-size: 11px;")
-        
+
         bottom_guide_bar.addWidget(lbl_guide_title)
         bottom_guide_bar.addWidget(lbl_guide_text)
         bottom_guide_bar.addStretch()
@@ -251,7 +237,7 @@ class WareLensApp(QMainWindow):
             if is_done: done_count += 1
             status_tag = "완료" if is_done else "미완료"
             self.file_list_widget.addItem(f"{f}\t\t{status_tag}")
-            
+
         total = len(self.image_list)
         if total > 0:
             pct = (done_count / total) * 100
@@ -282,7 +268,7 @@ class WareLensApp(QMainWindow):
         if not self.image_list: return
         fname = self.image_list[self.current_idx]
         self.filename_label.setText(f"현재 작업 파일: {fname}")
-        
+
         self.reset_all_button_selection()
 
         if fname in self.labels_data:
@@ -299,24 +285,29 @@ class WareLensApp(QMainWindow):
         self.refresh_sub_category_buttons()
         self.sync_summary_display()
 
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = get_base_path()
         img_path = os.path.join(base_dir, "img", fname)
 
         if not os.path.exists(img_path):
             self.image_label.setText(f"⚠ 이미지 파일 로드 실패\n(경로에 파일 없음: {fname})")
             return
-            
+
         image = QImage(img_path)
         if image.isNull():
             self.image_label.setText("⚠ 이미지 로드 실패 (다음 이미지 이동 가능)")
             return
-            
+
         pixmap = QPixmap.fromImage(image)
         if self.rotation != 0:
             pixmap = pixmap.transformed(QTransform().rotate(self.rotation), Qt.TransformationMode.SmoothTransformation)
-            
-        scaled = pixmap.scaled(self.image_label.size() - QSize(10,10), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        self.image_label.setPixmap(scaled)
+
+        target_size = self.image_label.size() - QSize(10, 10)
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            self.image_label.setPixmap(pixmap)
+        else:
+            scaled = pixmap.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.image_label.setPixmap(scaled)
+
         self.file_list_widget.setCurrentRow(self.current_idx)
 
     def reset_all_button_selection(self):
@@ -334,11 +325,11 @@ class WareLensApp(QMainWindow):
 
     def set_category_state(self, name, click_trigger=False):
         self.chosen_category = name
-        self.chosen_sub_category = None 
+        self.chosen_sub_category = None
         for k, btn in self.cate_btn_map.items(): btn.setChecked(k == name)
         self.refresh_sub_category_buttons()
         if click_trigger:
-            self.current_step = "sub_category" 
+            self.current_step = "sub_category"
             self.update_step_focus_ui()
         self.sync_summary_display()
 
@@ -382,7 +373,6 @@ class WareLensApp(QMainWindow):
         self.rotation = 0
         self.load_image()
 
-   
     def keyPressEvent(self, event: QKeyEvent):
         key = event.key()
         mods = event.modifiers()
@@ -398,21 +388,18 @@ class WareLensApp(QMainWindow):
                 super().keyPressEvent(event)
             return
 
-        
         if key == Qt.Key.Key_R and mods == Qt.KeyboardModifier.ShiftModifier:
             self.rotation = (self.rotation - 90) % 360
             self.load_image()
             event.accept()
             return
 
-        
         elif key == Qt.Key.Key_R and mods == Qt.KeyboardModifier.ControlModifier:
             self.rotation = (self.rotation + 90) % 360
             self.load_image()
             event.accept()
             return
 
-        
         elif key == Qt.Key.Key_Z and mods == Qt.KeyboardModifier.ControlModifier:
             self.reset_all_button_selection()
             self.clear_label_session()
@@ -421,7 +408,6 @@ class WareLensApp(QMainWindow):
             event.accept()
             return
 
-       
         elif key == Qt.Key.Key_Backspace:
             if self.current_step == "sub_category": self.current_step = "category"
             elif self.current_step == "color": self.current_step = "sub_category"
@@ -430,13 +416,11 @@ class WareLensApp(QMainWindow):
             event.accept()
             return
 
-        
         elif key in [Qt.Key.Key_Space, Qt.Key.Key_Return]:
             self.validate_and_save_data()
             event.accept()
             return
 
-        
         elif key == Qt.Key.Key_Left:
             self.prev_image()
             event.accept()
@@ -446,7 +430,6 @@ class WareLensApp(QMainWindow):
             event.accept()
             return
 
-        
         if key in self.shortcut_keys and mods == Qt.KeyboardModifier.NoModifier:
             idx = self.shortcut_keys.index(key)
             valid_shortcut = False
@@ -456,7 +439,7 @@ class WareLensApp(QMainWindow):
                 if idx < len(sub_list): valid_shortcut = True
             elif self.current_step == "color" and idx < len(self.colors_list): valid_shortcut = True
             elif self.current_step == "pattern" and idx < len(self.patterns_list): valid_shortcut = True
-            
+
             if valid_shortcut:
                 self.handle_matrix_shortcut(idx)
                 event.accept()
@@ -488,15 +471,15 @@ class WareLensApp(QMainWindow):
 
         fname = self.image_list[self.current_idx]
         note_txt = self.note_input.text().strip()
-        
+
         self.labels_data[fname] = [
-            self.chosen_category, 
-            self.chosen_sub_category, 
-            self.chosen_color, 
-            self.chosen_pattern, 
+            self.chosen_category,
+            self.chosen_sub_category,
+            self.chosen_color,
+            self.chosen_pattern,
             note_txt
         ]
-        
+
         self.save_to_csv()
         self.update_sidebar_list()
         self.next_image()
@@ -505,21 +488,25 @@ class WareLensApp(QMainWindow):
         super().resizeEvent(event)
         self.load_image()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        QTimer.singleShot(0, self.load_image)
+
     def closeEvent(self, event):
         self.save_to_csv()
         event.accept()
 
 def get_image_list(path="img"):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = get_base_path()
     target_path = os.path.join(base_dir, path)
-    
+
     if not os.path.exists(target_path):
         os.makedirs(target_path)
         return []
-        
+
     files = os.listdir(target_path)
     supported_extensions = ('.jpg', '.jpeg', '.png', '.webp')
-    
+
     valid_files = [f for f in files if f.lower().endswith(supported_extensions)]
     return sorted(valid_files)
 
@@ -527,12 +514,9 @@ if __name__ == "__main__":
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     images = get_image_list()
     app = QApplication(sys.argv)
-    
-    print("1. 앱 시작 전") 
+
     window = WareLensApp(images)
-    print("2. 창 객체 생성 완료")
     window.show()
-    print("3. 창 띄우기 호출 완료")
-    
+
     sys.exit(app.exec())
 
