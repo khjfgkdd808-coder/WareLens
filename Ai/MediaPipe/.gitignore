@@ -8,6 +8,9 @@ __pycache__/
 #models/
 #*.task
 
+# [추가] 외부 오픈소스 엔진 소스코드 전역 제외
+CatVTON/
+
 # 운영체제 임시 파일 및 캐시 제외
 .DS_Store
 Thumbs.db
