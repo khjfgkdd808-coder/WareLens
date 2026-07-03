@@ -17,9 +17,9 @@ const mapCategory = (subCategory: string): ProductCategory => {
     '긴팔 티셔츠': '긴팔 티셔츠',
     '셔츠/블라우스': '셔츠/블라우스',
     '니트/스웨터': '니트/스웨터',
-    '하의': '하의',
-    '원피스': '원피스',
-    '아우터': '아우터',
+    하의: '하의',
+    원피스: '원피스',
+    아우터: '아우터',
 
     TOP: '전체 상의',
     BOTTOM: '하의',
@@ -34,7 +34,7 @@ const mapCategory = (subCategory: string): ProductCategory => {
 // Recommendation → Product
 // ─────────────────────────────
 export const mapRecommendationToProduct = (
-  rec: Recommendation
+  rec: Recommendation,
 ): Product => ({
   id: String(rec.item_id),
   name: `${rec.sub_category} (${rec.color})`,
@@ -49,31 +49,31 @@ export const mapRecommendationToProduct = (
 })
 
 // ─────────────────────────────
-// ⭐ 실제 API
+// 실제 백엔드 호출
+// POST http://localhost:8080/api/recommendations/upload
 // ─────────────────────────────
 export const postRecommend = async (
-  req: RecommendRequest
+  req: RecommendRequest,
 ): Promise<RecommendResponse> => {
-
   const formData = new FormData()
 
-  // ✔ 필수값 3개 (누락 금지)
   formData.append('gender', req.gender)
   formData.append('height_cm', String(req.height_cm))
-
-  // ✅ 여기 (몸무게 다시 포함)
   formData.append('weight_kg', String(req.weight_kg))
-
   formData.append('body_image', req.body_image)
 
-  // 스타일 이미지 배열
   req.style_images.forEach((img) => {
     formData.append('style_images', img)
   })
 
   const { data } = await axiosClient.post<RecommendResponse>(
-    '/recommendations/upload',
-    formData
+    '/api/recommendations/upload',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    },
   )
 
   console.group('📥 Spring Boot Response')
@@ -87,13 +87,13 @@ export const postRecommend = async (
 // 응답 → Product
 // ─────────────────────────────
 export const extractProducts = (
-  res: RecommendResponse
+  res: RecommendResponse,
 ): Product[] => {
   return res.data.recommendations.map(mapRecommendationToProduct)
 }
 
 // ─────────────────────────────
-// TryOn placeholder
+// Try-On (임시)
 // ─────────────────────────────
 export const requestTryOnPlaceholder = async (params: {
   personImageUrl: string
@@ -104,7 +104,6 @@ export const requestTryOnPlaceholder = async (params: {
     color: string
   }
 }): Promise<{ resultImageUrl: string }> => {
-
   console.log('[TryOn]', params.clothing)
 
   return {
