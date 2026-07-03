@@ -1,4 +1,5 @@
 # core/analyzer/pipeline.py
+import os
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -12,8 +13,17 @@ from mediapipe.tasks.python import vision
 logger = logging.getLogger("WareLensAI")
 
 class BodyAnalyzerPipeline:
-    def __init__(self, model_path: str = "models/pose_landmarker_heavy.task"):
+    def __init__(self, model_path: str = "model/analyzer_pose_heavy.task", **kwargs):
         try:
+            # 실행 위치에 구애받지 않도록 파일 시스템 상대 경로 자동 보정 로직
+            if not os.path.isabs(model_path):
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
+                corrected_path = os.path.join(project_root, model_path)
+                
+                if os.path.exists(corrected_path):
+                    model_path = corrected_path
+
             base_options = python.BaseOptions(model_asset_path=model_path)
             options = vision.PoseLandmarkerOptions(
                 base_options=base_options,
@@ -38,32 +48,25 @@ class BodyAnalyzerPipeline:
     def _calculate_volume_metrics(self, world_landmarks: list, actual_height_cm: float) -> Tuple[Dict[str, float], Dict[str, float]]:
         """💡 물리 세계 미터 단위 랜드마크를 활용하여 정밀 cm를 계산합니다."""
         
-        # 3D 공간 거리 계산기 (단위: cm로 변환하기 위해 마지막에 100 곱함)
         def get_world_dist_cm(p1, p2) -> float:
             return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2) * 100
 
         # 1. 실제 키(Height) 기준 정밀 스케일 캘리브레이션
-        # 세계 좌표상 코(0)부터 발목(27,28) 중심까지의 Y축 차이를 기반으로 키를 측정합니다.
         nose = world_landmarks[0]
         ankle_y = (world_landmarks[27].y + world_landmarks[28].y) / 2
         world_height_cm = (ankle_y - nose.y) * 100
         
-        # 촬영 각도에 따른 오차를 잡아주는 최종 보정 계수
         calibration_factor = actual_height_cm / (world_height_cm if world_height_cm > 0 else 170.0)
 
         # 2. 신체 가로 골격 실측 (cm)
         shoulder_width_cm = get_world_dist_cm(world_landmarks[11], world_landmarks[12]) * calibration_factor
         hip_width_cm = get_world_dist_cm(world_landmarks[23], world_landmarks[24]) * calibration_factor
         
-        # 가슴 내부 너비는 어깨 골격 너비의 약 85% 지점입니다.
         chest_width_cm = shoulder_width_cm * 0.85
 
         # 3. 신체 앞뒤 입체 두께(Torso Depth) 연산
-        # 정면 사진에서 골격 관절은 일직선상에 놓이므로 두께를 직접 잴 수 없습니다.
-        # 따라서 어깨 대비 골반/허리 정면 실루엣 비율(체형 지표)을 연동하여 입체 두께를 안전하게 추정합니다.
         body_shape_ratio = hip_width_cm / shoulder_width_cm if shoulder_width_cm > 0 else 0.78
         
-        # 슬림할수록 두께 비율이 낮고(약 0.62), 통통할수록 원통형에 가까워집니다(약 0.72).
         depth_to_width_ratio = 0.55 + (body_shape_ratio * 0.1)
         torso_depth_cm = chest_width_cm * depth_to_width_ratio
 
@@ -76,7 +79,7 @@ class BodyAnalyzerPipeline:
             "shoulder_width_cm": round(shoulder_width_cm, 1),
             "chest_width_cm": round(chest_width_cm, 1),
             "torso_depth_cm": round(torso_depth_cm, 1),
-            "chest_girth_cm": round(chest_girth_cm, 1) # 💡 완벽하게 필터링된 인간의 실제 가슴둘레
+            "chest_girth_cm": round(chest_girth_cm, 1)
         }
 
         ratios = {
@@ -111,13 +114,12 @@ class BodyAnalyzerPipeline:
             return {"success": False, "error_message": "체형을 인식하지 못했습니다."}
 
         landmarks = detection_result.pose_landmarks[0]
-        world_landmarks = detection_result.pose_world_landmarks[0] # 💡 물리 세계 3D 좌표 추출
+        world_landmarks = detection_result.pose_world_landmarks[0]
 
         for critical_idx in [11, 12, 23, 24]:
             if landmarks[critical_idx].visibility < 0.5:
                 return {"success": False, "error_message": "상반신 중심축이 가려졌습니다."}
 
-        # 💡 물리 3D 월드 랜드마크 데이터를 기반으로 실측치 계산 위임
         ratios, measurements_cm = self._calculate_volume_metrics(world_landmarks, actual_height_cm)
         annotated_image_b64 = self._draw_overlay(image_bgr, landmarks)
 

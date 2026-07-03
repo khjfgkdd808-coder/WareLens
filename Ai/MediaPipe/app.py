@@ -1,6 +1,6 @@
 # app.py - WareLens AI 3D 체형 분석 및 고정밀 가상 피팅 통합 서버
 # ================================================================
-# 코드 배치 순서 및 변수 정의 시점을 완벽하게 교정한 최종 배포본입니다.
+# 코드 배치 순서, 괄호 쌍 매칭, 들여쓰기를 완벽하게 교정한 최종 배포본입니다.
 # 
 # [실행 방법]
 #     pip install -r requirements.txt
@@ -23,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.analyzer.pipeline import BodyAnalyzerPipeline
 from core.analyzer.recommender import StandardSizeRecommender
-from core.generator.run_catvton import CatVtonEngine
+from core.generator.run_catvton import CatVTONPipeline
 
 # ----------------------------------------------------------
 # 1. 로깅 및 전역 세션 캐시 초기화
@@ -65,11 +65,11 @@ async def lifespan(app: FastAPI):
     try:
         # Track A: 체형 분석 가중치 초기화
         logger.info("[Lifespan] Loading Track A: MediaPipe Real-World 3D pipeline...")
-        _state["analyzer_pipeline"] = BodyAnalyzerPipeline(model_path="models/pose_landmarker_heavy.task")
+        _state["analyzer_pipeline"] = BodyAnalyzerPipeline(model_path="model/analyzer_pose_heavy.task")
         
         # Track B: 가상 피팅 가중치 초기화
         logger.info("[Lifespan] Loading Track B: SegFormer & Official CatVTON pipeline...")
-        _state["catvton_engine"] = CatVtonEngine()
+        _state["catvton_engine"] = CatVTONPipeline()
         
         _state["initialized"] = True
         logger.info("초기화 완료 - 듀얼 트랙 AI 핵심 코어가 요청을 처리할 준비가 되었습니다.")
@@ -84,13 +84,13 @@ async def lifespan(app: FastAPI):
 
 
 # ----------------------------------------------------------
-# 4. [교정 핵심] FastAPI 인스턴스 조기 생성 (데코레이터 에러 방지)
+# 4. FastAPI 인스턴스 조기 생성 및 미들웨어 세팅
 # ----------------------------------------------------------
 app = FastAPI(
     title="WareLens AI 체형 분석 및 고정밀 가상 피팅 API",
     description="3D 입체 체형 실측 규격 추천 및 오피셜 CatVTON 기반 가상 피팅 엔진",
     version="3.1.0",
-    lifespan=lifespan  # 생성자 단계에서 Lifespan 매니저 바인딩
+    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -103,7 +103,7 @@ app.add_middleware(
 
 
 # ----------------------------------------------------------
-# 5. 전역 예외 핸들러 바인딩 (app이 상단에 정의되어 이제 에러 없음)
+# 5. 전역 예외 핸들러 바인딩
 # ----------------------------------------------------------
 @app.exception_handler(EngineError)
 async def engine_error_handler(request, exc: EngineError):
@@ -171,7 +171,7 @@ async def analyze_body(
             nparr = np.frombuffer(image_bytes, np.uint8)
             origin_cv_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # [실제 프로젝트 코드 동기화] 인메모리 유저 캐시 매핑 적재
+        # 인메모리 유저 캐시 매핑 적재
         USER_CACHE[user_id] = {
             "origin_cv_img": origin_cv_img
         }
@@ -248,7 +248,7 @@ async def execute_virtual_tryon(
                 
         logger.info("[Try-On Route] 실제 run_catvton 인터페이스 기반 가상 착장 추론 위임")
         
-        # [연동 보정 완료] 실제 run_catvton.py 명세에 맞춰 2개의 인자만 정확하게 매핑
+        # 교정된 클래스 인터페이스 규격에 맞춰 2개의 인자 매핑 구동
         tryon_base64 = _state["catvton_engine"].execute_tryon(
             garment_bytes=garment_bytes,
             origin_cv_img=origin_cv_img
@@ -277,5 +277,5 @@ if __name__ == "__main__":
         "app:app",
         host="0.0.0.0",
         port=8002,
-        reload=False  # 무거운 딥러닝 가중치 파일의 이중 적재 및 메모리 누수 방지
+        reload=False
     )

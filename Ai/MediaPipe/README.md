@@ -1,8 +1,8 @@
 # AI 3D 체형 분석 및 고정밀 가상 피팅 통합 시스템 (WareLens AI)
 
-MediaPipe Pose Landmarker의 Z축(깊이) 데이터를 활용하여 단 한 장의 정면 2D 사진으로부터 사용자의 **입체적인 3D 부피(몸통 두께 및 가슴둘레)**를 추정합니다. 계산된 실제 치수(cm)를 대한민국 KS 표준 의류 규격(KS K 0050/0051)과 매칭하여 가장 정확한 상의 사이즈와 체형 맞춤형 핏(Fit)을 추천하는 시스템입니다.
+MediaPipe Pose Landmarker의 Z축(깊이) 데이터를 활용하여 단 한 장의 정면 2D 사진으로부터 사용자의 입체적인 3D 부피(몸통 두께 및 가슴둘레)를 추정합니다. 계산된 실제 치수(cm)를 대한민국 KS 표준 의류 규격(KS K 0050/0051)과 매칭하여 가장 정확한 상의 사이즈와 체형 맞춤형 핏(Fit)을 추천하는 시스템입니다.
 
-나아가 고도화된 가상 피팅(Track B) 파이프라인을 연동하여, SegFormer Clothes Parser 기반의 자동 상의 마스킹(S-Step)과 공식 CatVTON 확산 모델 기반의 인페인팅 추론(D-Step)을 통해 왜곡 없는 자연스러운 상의 가상 착장 이미지를 실시간으로 생성합니다.
+나아가 고도화된 가상 피팅(Track B) 파이프라인을 연동하여, SegFormer Clothes Parser 기반의 자동 상의 마스킹(S-Step)과 공식 CatVTON 확산 모델 기반의 인페인팅 추론(D-Step)을 통해 왜곡 없는 자연스러운 상의 가상 착장 이미지를 실시간으로 생성합니다. 본 엔진은 백엔드의 연속 대량 호출(Top-5 루프) 및 자원 제어 환경에 최적화되어 있습니다.
 
 ---
 
@@ -11,8 +11,8 @@ MediaPipe Pose Landmarker의 Z축(깊이) 데이터를 활용하여 단 한 장�
 ```text
 project/
 │
-├── models/
-│   └── pose_landmarker_heavy.task  # MediaPipe AI 모델 가중치 파일
+├── model/                          # [최신화] 타 파트와의 자원 매핑 규격을 통일한 전역 모델 폴더
+│   └── analyzer_pose_heavy.task    # [최신화] 체형 분석용 포즈 추정 3D 핵심 가중치 파일
 │
 ├── core/
 │   ├── analyzer/
@@ -21,11 +21,11 @@ project/
 │   │   └── recommender.py          # KS 표준 규격(가슴둘레) 매칭 및 입체감 기반 핏(Fit) 판정 엔진
 │   │  
 │   └── generator/
-│       └── run_catvton.py          # 양방향 AI 전처리 및 CatVTON 기반 가상 피팅 코어
+│       └── run_catvton.py          # [최신화] 연속 루프 대응형 고정밀 가상 피팅 코어 파이프라인
 │
 ├── CatVTON/                        # CatVTON 오픈소스 의존성 및 모델 디렉토리
 │
-├── app.py                          # [수정] Lifespan 및 커스텀 에러 규격이 통합된 메인 웹 API 서버
+├── app.py                          # [최신화] Lifespan 컨텍스트 및 자바 백엔드 공용 에러 레이어가 통합된 메인 웹 API 서버
 └── README.md                       # 이 파일
 ```
 
@@ -45,6 +45,8 @@ project/
    - 과도한 마스크 확장이 무지 검은 티셔츠를 셔츠 카라로 왜곡시키거나 턱선 영역을 오염시키는 것을 막기 위해, 얼굴 및 머리카락 영역은 수학적으로 차감(Subtract)하되 목 영역은 개방하여 의류 고유의 넥라인 구조를 복원합니다.
 5. **골든 파라미터 및 포스트 알파 블렌딩 (Golden Inference & Post-Blending)**
    - 무지 원단의 색상 과포화 환각을 방지하기 위해 `guidance_scale=2.9`, `steps=40` 골든 밸런스를 고정하였으며, 추론 이후 가우시안 소프트 마스크 맵을 통해 하의(바지)와의 허리 경계선을 자연스럽게 알파 합성 처리합니다.
+6. **Top-5 호출 루프 안정화 레이어 (VRAM OOM Prevention)**
+   - 백엔드 서버의 다중 연속 요청 시 생성형 인공지능 내부의 임시 연산 행렬이 비워지지 않고 VRAM에 누적되어 다운되는 현상을 방지하기 위해, `try-finally` 블록 기반의 파이토치 캐시 완전 강제 플러시 로직을 도입했습니다.
 
 ---
 
@@ -59,18 +61,12 @@ project/
 ## 설치 방법
 
 ```bash
-# 가상환경 생성 및 활성화
+# 가상환경 생성 및 활성화 (파이썬 표준 venv 또는 conda 지원)
 python3 -m venv venv
 source venv/bin/activate
 
-# CUDA 11.8에 맞는 PyTorch 공식 휠(Wheel) 주소를 지정하여 선행 설치
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# 그 다음 나머지 의존성 패키지 일괄 설치
-pip install -r requirements.txt
-
 # 통합 웹 및 딥러닝 비전 분석 필수 패키지 일괄 설치
-# pip install fastapi uvicorn python-multipart opencv-python numpy mediapipe torch torchvision diffusers transformers accelerate huggingface_hub pillow
+pip install -r requirements.txt
 ```
 
 ---
@@ -78,18 +74,19 @@ pip install -r requirements.txt
 ## 실행 방법
 
 ### 순서 1 - AI 핵심 가중치 모델 준비
-서버 초기화 에러를 방지하기 위해 구동 전에 반드시 아래 가중치 파일을 외부에서 다운로드하여 `models/` 디렉토리 하위에 수동 배치해야 합니다. CatVTON 및 SegFormer 가중치는 서버 기동 시 HuggingFace Hub를 통해 `~/.cache` 경로로 최초 1회 자동 다운로드됩니다.
+서버 부팅 단계 크래시를 방지하기 위해 구동 전에 반드시 아래 가중치 파일을 외부에서 다운로드하여 최상위 `model/` 디렉토리 하위에 배치해야 합니다. CatVTON 및 SegFormer 가중치는 서버 기동 시 HuggingFace Hub를 통해 최초 1회 자동으로 통합 격리 다운로드됩니다.
 
 ```bash
-mkdir models
-wget [https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task) -O models/pose_landmarker_heavy.task
+mkdir model
+wget [https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task) -O model/analyzer_pose_heavy.task
 ```
 
 ### 순서 2 - 추천 및 피팅 서버 실행
 ```bash
-# [수정] uvicorn 직접 명령 대신 최적화 시드와 Lifespan 매니저가 내장된 스크립트로 실행합니다.
+# 무거운 가중치 인프라가 이중 적재되는 리스크를 막기 위해 최적화된 독립 코어로 실행합니다.
 python app.py
 ```
+실행 후 `http://localhost:8002/docs`에 접속하여 대화형 Swagger UI 문서 및 API 테스트를 진행할 수 있습니다.
 
 ---
 
@@ -98,7 +95,7 @@ python app.py
 ### 1. 체형 분석 API 요청 및 응답 구조 (POST `/api/v1/analyze/body`)
 - **Multipart Form Data**:
   - `user_id=1차테스트` (필수: 세션 매핑용 고유 키)
-  - `height_cm=175.0` (필수: 스케일 변환을 위한 기준 키)
+  - `height_cm=175.0` (필수: 백엔드 규격 데이터 이름 일치, 스케일 변환의 보정 기준 키)
   - `gender=MALE`
   - `file=[전신사진 이미지 바이너리]`
 
@@ -146,16 +143,15 @@ python app.py
 
 | 파일명 | 역할 |
 |---|---|
-| `app.py` | [수정] FastAPI 엔드포인트 라우팅, 전역 메모리 세션 캐싱(`USER_CACHE`), 3D 파이프라인 및 가상 착장 엔진 싱글톤 제어 (상대 팀 규격과 일치된 Lifespan 및 공용 에러 레이어 구축) |
-| `core/analyzer/pipeline.py` | MediaPipe의 Z축(깊이) 데이터를 활용하여 3D 거리를 측정하고, Ramanujan의 타원 둘레 공식을 적용해 실제 가슴둘레(cm)와 부피를 산출 |
-| `core/analyzer/recommender.py` | 추출된 가슴둘레(cm)와 키(cm)를 KS K 0050/0051 국가 표준 의류 규격과 대조하여 최적 사이즈 추천 및 몸통 두께 비례에 따른 핏(Fit) 보정 |
-| `core/generator/run_catvton.py` | SegFormer 기반의 목선 개방형 뺄셈 마스킹 처리 및 비율 왜곡이 교정된 오피셜 CatVTON 딥러닝 추론 파이프라인 구동 |
+| `app.py` | FastAPI 엔드포인트 라우팅, 전역 메모리 세션 캐싱(`USER_CACHE`), 3D 파이프라인 및 가상 착장 엔진 싱글톤 자원 로드 제어 |
+| `core/analyzer/pipeline.py` | MediaPipe의 Z축 데이터를 기반으로 가중치 파일 상대 경로를 정규화하여 탐색하고, Ramanujan 타원 둘레 공식을 결합하여 신체 실측 부피값 도출 |
+| `core/analyzer/recommender.py` | 추출된 가슴둘레와 키를 대조하여 최적 기성복 사이즈 채점 및 몸통 두께 비례에 따른 맞춤형 핏(Fit) 필터링 |
+| `core/generator/run_catvton.py` | SegFormer 기반 상의 전처리 마스킹 연산 및 다중 연속 루프 구동 시 가비지 컬렉션을 보장하는 오피셜 CatVTON 추론 컴포넌트 |
 
 ---
 
 ## 설정값 변경 방법
 `core/analyzer/recommender.py` 상단의 `KS_SIZE_CHART` 딕셔너리를 수정하면 남성(MALE) 및 여성(FEMALE)의 기성복 채점 매칭 기준(가슴둘레 및 키)을 브랜드 자사몰 규격에 맞게 커스텀할 수 있습니다.
-
 ```python
 KS_SIZE_CHART = {
     "MALE": {
@@ -176,14 +172,4 @@ KS_SIZE_CHART = {
 
 ---
 
-## 향후 확장 계획 및 기술적 고도화 방안
-
-### 1. 다중 앵글(Multi-Angle) 이미지 지원을 통한 부피 측정 극대화
-- **현재 달성 성과**: 기존 2D 정면 사진의 평면적 한계를 극복하기 위해 MediaPipe의 Z축 뎁스(Depth) 추정과 수학적 단면적 공식(타원 둘레 공식)을 결합하여 가상의 3D 가슴둘레와 몸통 두께를 성공적으로 도출했습니다.
-- **고도화 플랜**: 단일 사진에서의 추정(Estimation)을 넘어, 사용자가 90도 측면(Side-Profile) 사진을 추가로 업로드할 경우 시스템이 이를 융합 처리하는 다중 앵글 파이프라인을 기획 중입니다. 이를 통해 흉곽의 실제 두께를 픽셀 단위로 직접 실측하여 3D 스캐너급의 정밀도를 구현할 예정입니다.
-
-### 2. 의류 원단 속성 메타데이터(Fabric Properties) 연동을 통한 추천 정교화
-- **현상 및 필요성**: 동일한 체형(가슴둘레 100cm)을 가진 사용자라 하더라도, 선택한 의류의 원단 특성(신축성)에 따라 체감 핏과 활동성이 극명하게 갈립니다.
-- **고도화 방안**: 상품 메타데이터에 '신축성 레벨' 및 '원단 두께'를 추가하여 추천 엔진의 보정 팩터로 사용합니다.
-  - **신축성 없음(Non-stretch)**: 우븐 셔츠나 블레이저 등 늘어나지 않는 소재를 입을 때, 가슴 부피(Z축 깊이)가 큰 사용자에게는 단추 벌어짐 방지를 위해 알고리즘 내부에서 1단계 업사이징(Size-Up)을 자동 권장합니다.
-  - **신축성 높음(Stretch)**: 니트웨어 등 신축성이 좋은 원단의 경우, 추출된 정사이즈(True Size)를 그대로 유지하여 최적의 실루엣을 제안합니다.
+## 향후 확장 계획
