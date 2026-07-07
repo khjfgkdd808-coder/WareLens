@@ -111,16 +111,48 @@ class BodyAnalyzerPipeline:
         detection_result = self.detector.detect(mp_image)
 
         if not detection_result.pose_landmarks:
-            return {"success": False, "error_message": "체형을 인식하지 못했습니다."}
+            return {"success": False, "error_message": "사진에서 전신 신체 형상을 감지하지 못했습니다. 정면 정자세 사진인지 확인해 주세요."}
 
         landmarks = detection_result.pose_landmarks[0]
         world_landmarks = detection_result.pose_world_landmarks[0]
 
-        for critical_idx in [11, 12, 23, 24]:
-            if landmarks[critical_idx].visibility < 0.5:
-                return {"success": False, "error_message": "상반신 중심축이 가려졌습니다."}
+        # 1차 관문: 주요 신체 랜드마크의 가시성 및 화면 내 존재 여부 1차 스캔 (코, 어깨, 골반, 발목)
+        critical_indices = [0, 11, 12, 23, 24, 27, 28]
+        for critical_idx in critical_indices:
+            lm = landmarks[critical_idx]
+            if lm.visibility < 0.5 or not (0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0):
+                return {
+                    "success": False, 
+                    "error_message": "머리(코)부터 발목까지의 주요 신체 축이 화면 밖으로 잘렸거나 흐릿합니다. 완벽한 정면 전신 사진을 업로드해 주세요."
+                }
 
-        ratios, measurements_cm = self._calculate_volume_metrics(world_landmarks, actual_height_cm)
+        # 2차 관문: MediaPipe의 하반신 구겨 넣기 환각 및 하이앵글(항공샷) 왜곡 방어 레이어
+        # 어깨 중심, 골반 중심, 발목 중심의 Y축 위치를 파악하여 '몸통 대비 다리 비율'을 계산합니다.
+        shoulder_y = (landmarks[11].y + landmarks[12].y) / 2
+        hip_y = (landmarks[23].y + landmarks[24].y) / 2
+        ankle_y = (landmarks[27].y + landmarks[28].y) / 2
+
+        torso_height = hip_y - shoulder_y  # 몸통 세로 픽셀 길이
+        leg_height = ankle_y - hip_y        # 다리 세로 픽셀 길이
+
+        # 정상적인 수평 정면 사진은 골반~발목(다리)이 어깨~골반(몸통)보다 무조건 1.15배 이상 길어야 합니다.
+        # 항공샷이나 반신 사진처럼 다리가 몸통보다 짧게 왜곡된 경우는 사이즈 오차가 심하므로 컷트합니다.
+        if leg_height < torso_height * 1.15:
+            return {
+                "success": False,
+                "error_message": "상반신 위주의 사진 또는 왜곡이 심한 앵글이 감지되었습니다. 정밀한 사이즈 측정을 위해 반드시 카메라를 가슴 높이에 두고 똑바로 서서 찍은 전신 사진을 사용해 주세요."
+            }
+
+        # 3차 관문: 인체 비례가 검증된 무결한 사진만 실제 cm 및 부피 연산으로 진입 허용
+        try:
+            ratios, measurements_cm = self._calculate_volume_metrics(world_landmarks, actual_height_cm)
+        except Exception as e:
+            logger.error(f"[Pipeline Logic Error] {str(e)}")
+            return {
+                "success": False,
+                "error_message": "신체 기하학적 치수를 계산하는 도중 오류가 발생했습니다. 카메라를 정면으로 바라본 자세인지 확인해 주세요."
+            }
+
         annotated_image_b64 = self._draw_overlay(image_bgr, landmarks)
 
         return {
