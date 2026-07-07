@@ -16,8 +16,6 @@ const INIT_CHECKLIST: BodyPhotoChecklist = {
   isFrontFull: false, isFullBody: false, isBodyVisible: false,
 }
 
-// PC 기본 8개, 모바일 대응은 컴포넌트에서 처리
-// 처음 노출: AI 추천 핵심 4개. 더보기 클릭 시 4개씩 추가
 const PAGE_SIZE_PC     = 4
 const PAGE_SIZE_MOBILE = 4
 
@@ -40,7 +38,7 @@ interface AppStore {
   isUploadReady:       () => boolean
   isChecklistDone:     () => boolean
 
-  // ── Photo Validation (AI 자동 검증) ───────────────────────
+  // ── Photo Validation ───────────────────────────────────────
   photoValidationStatus:  PhotoValidationStatus
   photoValidationMessage: string
   photoValidationChecks:  PhotoValidationResult['checks'] | null
@@ -49,46 +47,47 @@ interface AppStore {
   resetPhotoValidation:   () => void
 
   // ── Analysis ───────────────────────────────────────────────
-  taskId:             string | null
-  analysisStatus:     AnalysisStatus
-  analysisErrorCode:  AnalysisErrorCode | null
-  progress:           number
-  bodyAnalysis:       BodyAnalysisResult | null
-  aiExplanation:      AIExplanationResult | null
-  analysisError:      string | null
-  setTaskId:          (id: string) => void
-  setAnalysisStatus:  (s: AnalysisStatus) => void
-  setAnalysisResult:  (r: { bodyAnalysis?: BodyAnalysisResult; aiExplanation?: AIExplanationResult }) => void
-  setAnalysisError:   (msg: string, code?: AnalysisErrorCode) => void
-  resetAnalysis:      () => void
+  taskId:               string | null
+  analysisStatus:       AnalysisStatus
+  analysisErrorCode:    AnalysisErrorCode | null
+  progress:             number
+  bodyAnalysis:         BodyAnalysisResult | null
+  aiExplanation:        AIExplanationResult | null
+  analysisError:        string | null
+  setTaskId:            (id: string) => void
+  setAnalysisStatus:    (s: AnalysisStatus) => void
+  setBodyAnalysis:      (data: BodyAnalysisResult | null) => void 
+  setAnalysisResult:    (r: { bodyAnalysis?: BodyAnalysisResult; aiExplanation?: AIExplanationResult }) => void
+  setAnalysisError:     (msg: string, code?: AnalysisErrorCode) => void
+  resetAnalysis:        () => void
 
   // ── Recommend ──────────────────────────────────────────────
-  products:           Product[]
-  totalCount:         number
-  hasMore:            boolean
-  activeCategory:     CategoryFilter
-  activeSeason:       Season
-  sortKey:            SortKey
-  wishlistIds:        Set<string>
-  selectedProductId:  string | null
-  recommendStatus:    AsyncStatus
-  visibleCount:       number
-  pageSizePC:         number
-  pageSizeMobile:     number
-  setProducts:        (p: Product[], total: number, hasMore: boolean) => void
-  appendProducts:     (p: Product[]) => void
-  setActiveCategory:  (cat: CategoryFilter) => void
-  setActiveSeason:    (season: Season) => void
-  setSortKey:         (key: SortKey) => void
-  toggleWishlist:     (id: string) => void
-  selectProduct:      (id: string | null) => void
-  setRecommendStatus: (s: AsyncStatus) => void
-  loadMore:           () => void
-  resetVisible:       () => void
+  products:            Product[]
+  totalCount:          number
+  hasMore:             boolean
+  activeCategory:      CategoryFilter
+  activeSeason:        Season
+  sortKey:             SortKey
+  wishlistIds:         Set<string>
+  selectedProductId:   string | null
+  recommendStatus:     AsyncStatus
+  visibleCount:        number
+  pageSizePC:          number
+  pageSizeMobile:      number
+  setProducts:         (p: Product[], total: number, hasMore: boolean) => void
+  appendProducts:      (p: Product[]) => void
+  setActiveCategory:   (cat: CategoryFilter) => void
+  setActiveSeason:     (season: Season) => void
+  setSortKey:          (key: SortKey) => void
+  toggleWishlist:      (id: string) => void
+  selectProduct:       (id: string | null) => void
+  setRecommendStatus:  (s: AsyncStatus) => void
+  loadMore:            () => void
+  resetVisible:        () => void
   getFilteredProducts: () => Product[]
   getVisibleProducts:  () => Product[]
 
-  // ── Try-On (가상 피팅) ─────────────────────────────────────
+  // ── Try-On ─────────────────────────────────────────────────
   tryOnSelectedClothing: SelectedClothing | null
   tryOnStatus:           TryOnStatus
   tryOnResultImageUrl:   string | null
@@ -99,33 +98,21 @@ interface AppStore {
   setTryOnError:         (msg: string) => void
   resetTryOn:            () => void
 
-  // ── 의류 선택 (Recommendation 원본 보존) ──────────────────
-  /**
-   * 사용자가 선택한 추천 의류의 원본 Recommendation 데이터
-   * Try-On API 요청 시 item_id, image_url, sub_category 등을 그대로 전달하기 위해 보존
-   */
   selectedRecommendation: Recommendation | null
   setSelectedRecommendation: (rec: Recommendation | null) => void
 
-  // ── 추천 로딩/에러 상태 ────────────────────────────────────
   isRecommendLoading: boolean
   recommendError:     string | null
   setRecommendLoading: (loading: boolean) => void
   setRecommendApiError: (msg: string | null) => void
 
-  // ── 인증 상태 ───────────────────────────────────────────────
-  authUser: {
-    userId:   string
-    email:    string
-    nickname: string
-  } | null
+  authUser: { userId: string; email: string; nickname: string } | null
   isLoggedIn:  boolean
   setAuthUser: (user: { userId: string; email: string; nickname: string } | null) => void
   logout:      () => void
   isGlobalLoading:      boolean
   globalLoadingMessage: string
   toasts:               Toast[]
-  /** ErrorModal 표시용 에러코드 (null이면 모달 닫힘) */
   errorModalCode:       ApiErrorCode | null
   errorModalRetry:      (() => void) | null
   showGlobalLoading:    (msg?: string) => void
@@ -137,13 +124,11 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
-
-  // ══ Upload ══════════════════════════════════════════════════
-  clothingPreviews:   [],
-  fullBodyPreview:    null,
+  clothingPreviews: [],
+  fullBodyPreview: null,
   bodyPhotoChecklist: INIT_CHECKLIST,
-  userInfo:           INIT_USER_INFO,
-  userInfoErrors:     {},
+  userInfo: INIT_USER_INFO,
+  userInfoErrors: {},
 
   addClothingImage: (file) => {
     if (get().clothingPreviews.length >= 5) return
@@ -192,34 +177,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
   isChecklistDone: () => get().photoValidationStatus === 'success',
 
-  // ══ Photo Validation ════════════════════════════════════════
-  photoValidationStatus:  'idle',
+  photoValidationStatus: 'idle',
   photoValidationMessage: '',
-  photoValidationChecks:  null,
+  photoValidationChecks: null,
 
   setPhotoValidating: () => set({
-    photoValidationStatus:  'validating',
+    photoValidationStatus: 'validating',
     photoValidationMessage: 'AI 자동 확인 중...',
-    photoValidationChecks:  null,
+    photoValidationChecks: null,
   }),
   setPhotoValidation: (result) => set({
-    photoValidationStatus:  result.status,
+    photoValidationStatus: result.status,
     photoValidationMessage: result.message,
-    photoValidationChecks:  result.checks,
+    photoValidationChecks: result.checks,
   }),
   resetPhotoValidation: () => set({
-    photoValidationStatus:  'idle',
+    photoValidationStatus: 'idle',
     photoValidationMessage: '',
-    photoValidationChecks:  null,
+    photoValidationChecks: null,
   }),
 
-  // ══ Analysis ════════════════════════════════════════════════
   taskId: null, analysisStatus: 'PENDING', analysisErrorCode: null,
   progress: 0, bodyAnalysis: null, aiExplanation: null, analysisError: null,
 
   setTaskId: (id) => set({ taskId: id }),
   setAnalysisStatus: (status) =>
     set({ analysisStatus: status, progress: ANALYSIS_STEPS[status].progress }),
+  setBodyAnalysis: (data) => set({ bodyAnalysis: data }),
   setAnalysisResult: ({ bodyAnalysis, aiExplanation }) =>
     set({ bodyAnalysis: bodyAnalysis ?? null, aiExplanation: aiExplanation ?? null }),
   setAnalysisError: (msg, code = 'UNKNOWN') =>
@@ -229,7 +213,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
           bodyAnalysis: null, aiExplanation: null,
           analysisError: null, analysisErrorCode: null }),
 
-  // ══ Recommend ═══════════════════════════════════════════════
   products: [], totalCount: 0, hasMore: false,
   activeCategory: '전체', activeSeason: 'all', sortKey: 'similarity',
   wishlistIds: new Set(), selectedProductId: null,
@@ -260,7 +243,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     let list = (activeCategory === '전체' || activeCategory === '전체 상의')
       ? products
       : products.filter((p) => p.category === activeCategory)
-    // 계절 필터 — spring/fall 동일 처리
     if (activeSeason !== 'all') {
       const target = activeSeason === 'spring' ? ['spring', 'fall'] : [activeSeason]
       list = list.filter((p) => !p.season || target.includes(p.season))
@@ -276,12 +258,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return get().getFilteredProducts().slice(0, visibleCount)
   },
 
-  // ══ Try-On ══════════════════════════════════════════════════
   tryOnSelectedClothing: null,
   tryOnStatus:           'idle',
   tryOnResultImageUrl:   null,
   tryOnError:            null,
-
   setTryOnClothing: (clothing) => set({
     tryOnSelectedClothing: clothing,
     tryOnStatus:           'idle',
@@ -298,17 +278,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     tryOnError:            null,
   }),
 
-  // ══ 의류 선택 (Recommendation 원본 보존) ═════════════════════
   selectedRecommendation: null,
   setSelectedRecommendation: (rec) => set({ selectedRecommendation: rec }),
 
-  // ══ 추천 로딩/에러 ══════════════════════════════════════════
-  isRecommendLoading:   false,
-  recommendError:       null,
+  isRecommendLoading:    false,
+  recommendError:        null,
   setRecommendLoading:  (loading) => set({ isRecommendLoading: loading }),
   setRecommendApiError: (msg)     => set({ recommendError: msg }),
 
-  // ══ 인증 ════════════════════════════════════════════════════
   authUser:   null,
   isLoggedIn: false,
   setAuthUser: (user) => set({ authUser: user, isLoggedIn: user !== null }),
@@ -317,7 +294,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     localStorage.removeItem('wl_token')
   },
 
-  // ══ UI ══════════════════════════════════════════════════════
   isGlobalLoading: false, globalLoadingMessage: '', toasts: [],
   errorModalCode: null, errorModalRetry: null,
   showGlobalLoading: (msg = '처리 중...') =>

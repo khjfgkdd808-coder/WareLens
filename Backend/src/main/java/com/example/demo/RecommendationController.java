@@ -1,46 +1,35 @@
 package com.example.demo;
 
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import java.util.*;
 
-/**
- * [역할: REST API 게이트웨이]
- * - 요청 진입점으로서 유효성 검증 및 예외 처리 담당
- */
 @RestController
 @RequestMapping("/api/recommendations")
-@CrossOrigin(origins = "*") 
+@CrossOrigin(origins = "*", allowedHeaders = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.OPTIONS})
 public class RecommendationController {
 
     private final RecommendationService recommendationService;
-
-    public RecommendationController(RecommendationService recommendationService) {
-        this.recommendationService = recommendationService;
-    }
+    public RecommendationController(RecommendationService recommendationService) { this.recommendationService = recommendationService; }
 
     @PostMapping("/upload")
     public Map<String, Object> uploadFile(@ModelAttribute UploadRequestDto requestDto) {
-        try {
-            // 리액트가 보낸 데이터가 자바에 잘 들어왔는지 콘솔에 먼저 찍어보는 로그
-            System.out.println("받은 의류 사진 개수: " + (requestDto.getClothingImages() != null ? requestDto.getClothingImages().size() : 0));
-            System.out.println("받은 신체 정보 JSON: " + requestDto.getUserInfo());
+        try { return recommendationService.processRecommendation(requestDto); }
+        catch (Exception e) { return Map.of("status", "ERROR", "message", e.getMessage()); }
+    }
 
-            // [연동] 서비스 로직으로 데이터 위임
-            Map<String, Object> result = recommendationService.processRecommendation(requestDto);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("status", "success");
-            response.putAll(result);
-            return response;
-            
-        } catch (Exception e) {
-            return Map.of("status", "fail", "error", e.getMessage());
-        }
+    // 쿼리 파라미터 (?taskId=...) 방식 대응
+    @GetMapping("")
+    public Map<String, Object> getRecommendationsByQuery(@RequestParam("taskId") String taskId) {
+        return recommendationService.getAnalysisResult(taskId);
     }
-    
-    // [테스트] 통합 데이터 확인용 프론트엔드 페이지
-    @GetMapping("/upload-page")
-    public String getUploadPage() {
-        return "<html>...</html>"; // 기존 HTML 내용 동일 유지
+
+    // 경로 변수 방식 대응
+    @GetMapping("/analysis/{taskId}")
+    public Map<String, Object> getAnalysisResult(@PathVariable("taskId") String taskId) {
+        return recommendationService.getAnalysisResult(taskId);
     }
+
+    @PostMapping("/validate/body")
+    public Map<String, Object> validateBody(@RequestParam("file") MultipartFile file) { return recommendationService.validateBody(file); }
 }
