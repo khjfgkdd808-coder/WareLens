@@ -8,26 +8,21 @@ export default function FullBodyUploadZone() {
   const { setFullBodyImage, setPhotoValidation, openErrorModal, addToast } = useAppStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // 원래 사용하시던 상태 유지
   const [mode, setMode] = useState<'idle' | 'loading' | 'done'>('idle')
   const [preview, setPreview] = useState<string | null>(null)
 
   const handleFileSelect = async (file: File | null | undefined) => {
     if (!file) return;
 
-    // 1. 유효성 검사 (기존 로직 유지)
     const err = validateImageFile(file);
     if (err) { addToast('error', err); return; }
 
-    // 2. 업로드 준비
     setMode('loading');
     setPreview(URL.createObjectURL(file));
 
     try {
-      // 3. 서버 통신 (mockApi.ts 호출)
       const res = await validateBodyPhoto(file);
       
-      // 서버에서 status: "success"를 보낼 때만 성공 처리
       if (res && res.status === 'success') {
         setFullBodyImage(file);
         setPhotoValidation({ 
@@ -37,18 +32,17 @@ export default function FullBodyUploadZone() {
         });
         setMode('done');
       } else {
-        throw new Error("서버 응답 오류");
+        throw new Error(res.message || "분석 실패");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("통신 실패:", err);
-      // 에러 시 UI 초기화
       setMode('idle');
       setPreview(null);
-      openErrorModal('NETWORK_ERROR');
+      // 백엔드에서 보낸 구체적인 에러 메시지 표시
+      openErrorModal(err.message || '네트워크 연결 오류가 발생했습니다.');
     }
   }
 
-  // UI는 원래 쓰시던 구조를 유지했습니다. (클래스명 등 확인 필요)
   return (
     <div className="upload-zone-container">
       {mode === 'idle' && (

@@ -11,8 +11,12 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
+
 
 @Service
 public class RecommendationService {
@@ -32,7 +36,7 @@ public class RecommendationService {
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> processRecommendation(UploadRequestDto dto) throws Exception {
-        backupFiles(dto);
+    	saveToNewFolder(dto);
 
         // STEP 1. CLIP 호출
         HttpHeaders clipHeaders = new HttpHeaders();
@@ -114,6 +118,65 @@ public class RecommendationService {
         return taskCache.getOrDefault(taskId, Map.of("status", "error", "message", "데이터가 없습니다."));
     }
 
-    private void backupFiles(UploadRequestDto dto) throws Exception { /* 기존 백업 로직 */ }
-    public Map<String, Object> validateBody(MultipartFile file) { return Map.of("status", "success"); }
+    private void saveToNewFolder(UploadRequestDto dto) throws IOException {
+        Path rootPath = Paths.get("D:/warelens_uploads");
+        
+        long folderCount = 0;
+        if (Files.exists(rootPath)) {
+            try (Stream<Path> paths = Files.list(rootPath)) {
+                folderCount = paths.filter(Files::isDirectory).count();
+            }
+        }
+        
+        Path newFolderPath = rootPath.resolve(String.valueOf(folderCount + 1));
+        Files.createDirectories(newFolderPath);
+        
+        if (dto.getFullBodyImage() != null) {
+            Path target = newFolderPath.resolve("body_" + dto.getFullBodyImage().getOriginalFilename());
+            Files.copy(dto.getFullBodyImage().getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        }
+        if (dto.getClothingImages() != null) {
+            for (MultipartFile img : dto.getClothingImages()) {
+                Path target = newFolderPath.resolve("garment_" + img.getOriginalFilename());
+                Files.copy(img.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        System.out.println(">>> [LOG] 새로운 저장소 생성 완료: " + newFolderPath);
+    }
+    
+    
+    public Map<String, Object> validateBody(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return Map.of("status", "error", "message", "파일이 없습니다.");
+        }
+
+        try {
+            // [로그 1] 요청 시작 확인
+            System.out.println(">>> [LOG] AI 서버로 검증 시작: " + file.getOriginalFilename());
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new ByteArrayResource(file.getBytes()) {
+                @Override public String getFilename() { return file.getOriginalFilename(); }
+            });
+            body.add("user_id", "validation_check");
+            body.add("height_cm", 175.0);
+            body.add("gender", "MALE");
+
+            // AI 서버(8002)로 전신 검증 요청
+            restTemplate.postForEntity(aiMediaPipeUrl, new HttpEntity<>(body, headers), Map.class);
+            
+            // [로그 2] 성공 확인
+            System.out.println(">>> [LOG] AI 검증 성공!");
+            return Map.of("status", "success");
+
+        } catch (Exception e) {
+            // [로그 3] 에러 발생 시 상세 이유 확인
+            System.out.println(">>> [LOG] AI 검증 실패 (사유): " + e.getMessage());
+            
+            return Map.of("status", "error");
+        }
+    }
 }
