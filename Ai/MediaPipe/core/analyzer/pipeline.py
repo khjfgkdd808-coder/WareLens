@@ -54,9 +54,16 @@ class BodyAnalyzerPipeline:
         # 1. 실제 키(Height) 기준 정밀 스케일 캘리브레이션
         nose = world_landmarks[0]
         ankle_y = (world_landmarks[27].y + world_landmarks[28].y) / 2
-        world_height_cm = (ankle_y - nose.y) * 100
         
-        calibration_factor = actual_height_cm / (world_height_cm if world_height_cm > 0 else 170.0)
+        # [기존] 코 ~ 발목 거리 (전체 인체의 약 87.5% 영역에 해당)
+        pure_world_height_cm = (ankle_y - nose.y) * 100
+        
+        # 💡 [보정 핵심] 인체 비례 상수를 적용하여 생략된 정수리와 발바닥 스페이스(12.5%)를 포함한 100% 진짜 전신 키를 역산합니다.
+        anatomical_ratio = 0.875
+        estimated_total_world_height_cm = pure_world_height_cm / anatomical_ratio
+        
+        # 복원된 진짜 전신 키를 기준으로 캘리브레이션 팩터를 잡아야 가슴둘레 오차가 사라집니다.
+        calibration_factor = actual_height_cm / (estimated_total_world_height_cm if estimated_total_world_height_cm > 0 else 170.0)
 
         # 2. 신체 가로 골격 실측 (cm)
         shoulder_width_cm = get_world_dist_cm(world_landmarks[11], world_landmarks[12]) * calibration_factor
@@ -73,7 +80,12 @@ class BodyAnalyzerPipeline:
         # 4. Ramanujan 타원 둘레 공식을 활용한 최종 가슴둘레(Chest Girth) 도출
         a = chest_width_cm / 2
         b = torso_depth_cm / 2
-        chest_girth_cm = math.pi * (3 * (a + b) - math.sqrt((3 * a + b) * (a + 3 * b)))
+        
+        inside_sqrt = (3 * a + b) * (a + 3 * b)
+        if inside_sqrt < 0:
+            raise ValueError("신체 랜드마크 역전 현상으로 기하학적 연산이 불가능합니다.")
+            
+        chest_girth_cm = math.pi * (3 * (a + b) - math.sqrt(inside_sqrt))
 
         measurements_cm = {
             "shoulder_width_cm": round(shoulder_width_cm, 1),
