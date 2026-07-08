@@ -74,7 +74,10 @@ python3 -m venv venv
 source venv/bin/activate
 
 # 가상환경 활성화 (Windows Command Prompt)
-# venv\Scripts\activate.bat
+venv\Scripts\activate.bat
+
+# 가상환경 활성화 (Windows PowerShell)
+venv\Scripts\Activate.ps1
 ```
 
 ### 2단계: 교정된 통합 의존성 패키지 설치
