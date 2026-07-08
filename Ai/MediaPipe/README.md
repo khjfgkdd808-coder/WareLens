@@ -6,7 +6,7 @@ MediaPipe Pose Landmarker의 Z축(깊이) 데이터를 활용하여 단 한 장�
 
 ---
 
-## 프로젝트 구조
+## 📁 프로젝트 구조
 
 ```text
 project/
@@ -23,15 +23,16 @@ project/
 │   └── generator/
 │       └── run_catvton.py          # [최신화] 연속 루프 대응형 고정밀 가상 피팅 코어 파이프라인
 │
-├── CatVTON/                        # CatVTON 오픈소스 의존성 및 모델 디렉토리
+├── CatVTON/                        # [필수 클론] CatVTON 오픈소스 의존성 및 모델 디렉토리
 │
 ├── app.py                          # [최신화] Lifespan 컨텍스트 및 자바 백엔드 공용 에러 레이어가 통합된 메인 웹 API 서버
+├── requirements.txt                # [최신화] CUDA 인덱스 링크 및 NumPy 1.x 호환 패키지 목록
 └── README.md                       # 이 파일
 ```
 
 ---
 
-## 핵심 비전 아키텍처 (Core Solved Issues)
+## 🧠 핵심 비전 아키텍처 (Core Solved Issues)
 
 본 가상 피팅 엔진은 확산 모델(Diffusion) 계열 모델이 가진 고질적인 연산 오류 및 구조적 가변성을 제어하기 위해 다음과 같은 자체 예외 처리 기술이 탑재되어 있습니다.
 
@@ -50,56 +51,66 @@ project/
 
 ---
 
-## 환경 요구사항
+## 💻 환경 요구사항
 
 - Python 3.10 이상
-- 리눅스 / 윈도우 서버 배포 환경 (Headless OpenCV 적용)
-- NVIDIA GPU 가속 환경 (VRAM 12GB 이상 필수, VRAM 16GB 이상 권장)
+- 리눅스 / 윈도우 서버 배포 환경 (Headless OpenCV 적용으로 GUI 장치 불필요)
+- NVIDIA GPU 가속 환경 (VRAM 12GB 이상 필수, VRAM 16GB 이상 권장, CUDA 12.1 지원)
 
 ---
 
-## 설치 방법
+## 🚀 완벽 배포 및 실행 가이드 (Step-by-Step)
+
+다른 컴퓨터나 클라우드 서버에서 처음 프로젝트를 구동할 때, 의존성 충돌이나 파일 누락 없이 실행할 수 있도록 아래 **5단계 절차**를 순서대로 진행해 주세요.
+
+### 1단계: 격리된 가상환경 생성 및 활성화
+기존 패키지와의 충돌(특히 NumPy 2.x 및 OpenCV GUI 버전)을 방지하기 위해 반드시 깨끗한 새 가상환경을 생성합니다.
 
 ```bash
-# 가상환경 생성 및 활성화 (파이썬 표준 venv 또는 conda 지원)
+# 가상환경 생성
 python3 -m venv venv
+
+# 가상환경 활성화 (Linux / macOS)
 source venv/bin/activate
 
-# 통합 웹 및 딥러닝 비전 분석 필수 패키지 일괄 설치
+# 가상환경 활성화 (Windows Command Prompt)
+# venv\Scripts\activate.bat
+```
+
+### 2단계: 교정된 통합 의존성 패키지 설치
+`requirements.txt` 상단에 명시된 PyTorch 공식 CUDA 12.1 인덱스 URL을 통해 딥러닝 코어와 서드파티 라이브러리(`einops`, `scipy` 등)를 한 번에 설치합니다.
+
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
-
-# 3. 독립 오픈소스 CatVTON 엔진 소스코드 로컬 직접 다운로드 및 동기화
-# 메인 저장소의 정결함을 위해 가속 엔진은 로컬에서 독립 빌드합니다.
-git clone https://github.com/Zheng-Chong/CatVTON.git
 ```
 
----
-
-## 실행 방법
-
-### 순서 1 - AI 핵심 가중치 모델 준비
-서버 부팅 단계 크래시를 방지하기 위해 구동 전에 반드시 아래 가중치 파일을 외부에서 다운로드하여 최상위 `model/` 디렉토리 하위에 배치해야 합니다. CatVTON 및 SegFormer 가중치는 서버 기동 시 HuggingFace Hub를 통해 최초 1회 자동으로 통합 격리 다운로드됩니다.
+### 3단계: 오픈소스 CatVTON 엔진 클론 (필수 누락 주의!)
+`run_catvton.py`가 참조하는 상대 경로(`../../CatVTON`)를 만족시키기 위해, 프로젝트 최상위 디렉토리에 CatVTON 공식 저장소를 클론합니다.
 
 ```bash
-mkdir models
-
-wget https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task -O models/analyzer_pose_heavy.task
-
-혹은
-
-curl -L https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task -o models/analyzer_pose_heavy.task
+git clone [https://github.com/Zheng-Chong/CatVTON.git](https://github.com/Zheng-Chong/CatVTON.git)
 ```
 
-### 순서 2 - 추천 및 피팅 서버 실행
+### 4단계: MediaPipe 3D AI 가중치 모델 다운로드
+서버 부팅 단계의 크래시를 막기 위해, 포즈 추정 가중치 파일을 다운로드하여 `models/` 폴더에 배치합니다. (CatVTON 및 SegFormer 가중치는 최초 실행 시 HuggingFace Hub에서 자동 다운로드됩니다.)
+
 ```bash
-# 무거운 가중치 인프라가 이중 적재되는 리스크를 막기 위해 최적화된 독립 코어로 실행합니다.
+mkdir -p models
+curl -L [https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task) -o models/analyzer_pose_heavy.task
+```
+
+### 5단계: 통합 서버 부팅
+모든 준비가 완료되었습니다. 무거운 가중치 인프라가 안전하게 1회만 메모리에 적재되도록 독립 코어로 메인 서버를 구동합니다.
+
+```bash
 python app.py
 ```
-실행 후 `http://localhost:8002/docs`에 접속하여 대화형 Swagger UI 문서 및 API 테스트를 진행할 수 있습니다.
+실행 후 브라우저에서 `http://localhost:8002/docs`에 접속하면 대화형 Swagger UI 문서 및 API 테스트 화면을 바로 확인할 수 있습니다.
 
 ---
 
-## 출력 예시 (Output Examples)
+## 📊 출력 예시 (Output Examples)
 
 ### 1. 체형 분석 API 요청 및 응답 구조 (POST `/api/v1/analyze/body`)
 - **Multipart Form Data**:
@@ -148,7 +159,7 @@ python app.py
 
 ---
 
-## 각 파일 역할 요약
+## ⚙️ 각 파일 역할 요약
 
 | 파일명 | 역할 |
 |---|---|
@@ -159,8 +170,10 @@ python app.py
 
 ---
 
-## 설정값 변경 방법
-`core/analyzer/recommender.py` 상단의 `KS_SIZE_CHART` 딕셔너리를 수정하면 남성(MALE) 및 여성(FEMALE)의 기성복 채점 매칭 기준(가슴둘레 및 키)을 브랜드 자사몰 규격에 맞게 커스텀할 수 있습니다.
+## 🔧 설정값 변경 방법 (Configuration)
+
+`core/analyzer/recommender.py` 상단의 `KS_SIZE_CHART` 딕셔너리를 수정하면 남성(MALE) 및 여성(FEMALE)의 기성복 채점 매칭 기준(가슴둘레 및 키)을 브랜드 자사몰 규격에 맞게 자유롭게 커스텀할 수 있습니다.
+
 ```python
 KS_SIZE_CHART = {
     "MALE": {
