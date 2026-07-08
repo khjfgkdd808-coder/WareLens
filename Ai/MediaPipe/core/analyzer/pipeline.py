@@ -45,8 +45,8 @@ class BodyAnalyzerPipeline:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
         return image_bgr, mp_image
 
-    def _calculate_volume_metrics(self, world_landmarks: list, actual_height_cm: float) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """💡 물리 세계 미터 단위 랜드마크를 활용하여 정밀 cm를 계산합니다."""
+    def _calculate_volume_metrics(self, world_landmarks: list, actual_height_cm: float, weight_kg: float = None) -> Tuple[Dict[str, float], Dict[str, float]]:
+        """💡 물리 세계 미터 단위 랜드마크와 생체기계학적 보정을 활용하여 정밀 cm를 계산합니다."""
         
         def get_world_dist_cm(p1, p2) -> float:
             return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2) * 100
@@ -54,30 +54,47 @@ class BodyAnalyzerPipeline:
         # 1. 실제 키(Height) 기준 정밀 스케일 캘리브레이션
         nose = world_landmarks[0]
         ankle_y = (world_landmarks[27].y + world_landmarks[28].y) / 2
-        
-        # [기존] 코 ~ 발목 거리 (전체 인체의 약 87.5% 영역에 해당)
         pure_world_height_cm = (ankle_y - nose.y) * 100
         
-        # 💡 [보정 핵심] 인체 비례 상수를 적용하여 생략된 정수리와 발바닥 스페이스(12.5%)를 포함한 100% 진짜 전신 키를 역산합니다.
         anatomical_ratio = 0.875
         estimated_total_world_height_cm = pure_world_height_cm / anatomical_ratio
-        
-        # 복원된 진짜 전신 키를 기준으로 캘리브레이션 팩터를 잡아야 가슴둘레 오차가 사라집니다.
         calibration_factor = actual_height_cm / (estimated_total_world_height_cm if estimated_total_world_height_cm > 0 else 170.0)
 
-        # 2. 신체 가로 골격 실측 (cm)
-        shoulder_width_cm = get_world_dist_cm(world_landmarks[11], world_landmarks[12]) * calibration_factor
-        hip_width_cm = get_world_dist_cm(world_landmarks[23], world_landmarks[24]) * calibration_factor
+        # 2. 주요 신체 관절 랜드마크 변수 할당 (가독성 최적화)
+        shoulder_l, shoulder_r = world_landmarks[11], world_landmarks[12]
+        hip_l, hip_r = world_landmarks[23], world_landmarks[24]
         
-        chest_width_cm = shoulder_width_cm * 0.85
+        # 어깨에서 골반 방향으로 25% 내려온 지점을 가슴 너비 레벨(chest_l, chest_r)로 보간
+        chest_l = lambda: None
+        chest_r = lambda: None
+        for attr in ['x', 'y', 'z']:
+            setattr(chest_l, attr, getattr(shoulder_l, attr) * 0.75 + getattr(hip_l, attr) * 0.25)
+            setattr(chest_r, attr, getattr(shoulder_r, attr) * 0.75 + getattr(hip_r, attr) * 0.25)
 
-        # 3. 신체 앞뒤 입체 두께(Torso Depth) 연산
-        body_shape_ratio = hip_width_cm / shoulder_width_cm if shoulder_width_cm > 0 else 0.78
-        
-        depth_to_width_ratio = 0.55 + (body_shape_ratio * 0.1)
+        # 3. 관절 중심 간 거리(Raw Distance) 측정
+        raw_shoulder_width = get_world_dist_cm(shoulder_l, shoulder_r) * calibration_factor
+        raw_hip_width = get_world_dist_cm(hip_l, hip_r) * calibration_factor
+        raw_chest_width = get_world_dist_cm(chest_l, chest_r) * calibration_factor
+
+        # 💡 [방안A 핵심] MediaPipe는 뼈대(관절 중심)를 찍으므로, 피부와 근육 두께를 더해 실제 표면 사이즈로 확장합니다!
+        SKIN_MUSCLE_BUFFER_RATIO = 1.23
+
+        shoulder_width_cm = raw_shoulder_width * SKIN_MUSCLE_BUFFER_RATIO
+        hip_width_cm = raw_hip_width * SKIN_MUSCLE_BUFFER_RATIO
+        chest_width_cm = raw_chest_width * SKIN_MUSCLE_BUFFER_RATIO
+
+        # 4. 신체 앞뒤 입체 두께(Torso Depth) 연산 (체중 입력 유무에 따른 하이브리드 보정)
+        if weight_kg and weight_kg > 0:
+            estimated_bmi = weight_kg / ((actual_height_cm / 100) ** 2)
+            depth_to_width_ratio = 0.58 + ((estimated_bmi - 20) * 0.015)
+            depth_to_width_ratio = max(0.45, min(depth_to_width_ratio, 0.85))
+        else:
+            body_shape_ratio = hip_width_cm / shoulder_width_cm if shoulder_width_cm > 0 else 0.78
+            depth_to_width_ratio = 0.58 + (body_shape_ratio * 0.08)
+
         torso_depth_cm = chest_width_cm * depth_to_width_ratio
 
-        # 4. Ramanujan 타원 둘레 공식을 활용한 최종 가슴둘레(Chest Girth) 도출
+        # 5. Ramanujan 타원 둘레 공식을 활용한 최종 가슴둘레(Chest Girth) 도출
         a = chest_width_cm / 2
         b = torso_depth_cm / 2
         
@@ -95,7 +112,7 @@ class BodyAnalyzerPipeline:
         }
 
         ratios = {
-            "depth_to_width_ratio": torso_depth_cm / chest_width_cm
+            "depth_to_width_ratio": round(depth_to_width_ratio, 3)
         }
         return ratios, measurements_cm
 
@@ -155,6 +172,24 @@ class BodyAnalyzerPipeline:
                 "error_message": "상반신 위주의 사진 또는 왜곡이 심한 앵글이 감지되었습니다. 정밀한 사이즈 측정을 위해 반드시 카메라를 가슴 높이에 두고 똑바로 서서 찍은 전신 사진을 사용해 주세요."
             }
 
+        # 2.5차 관문: 사선(반측면) 촬영 감지 방어 레이어
+        # 월드 랜드마크의 Z축(카메라와의 거리, 미터 단위)을 이용해 양쪽 어깨와 골반의 깊이 차이를 계산합니다.
+        left_shoulder_z = world_landmarks[11].z
+        right_shoulder_z = world_landmarks[12].z
+        left_hip_z = world_landmarks[23].z
+        right_hip_z = world_landmarks[24].z
+
+        # 양쪽 어깨 또는 양쪽 골반의 깊이(Z축) 차이가 절대값 기준 0.07m(7cm) 이상 나면 사선으로 선 것으로 판단
+        shoulder_z_diff = abs(left_shoulder_z - right_shoulder_z)
+        hip_z_diff = abs(left_hip_z - right_hip_z)
+
+        if shoulder_z_diff > 0.07 or hip_z_diff > 0.07:
+            logger.warning(f"⚠️ 사선 각도 감지 됨: 어깨 깊이 오차({shoulder_z_diff*100:.1f}cm), 골반 깊이 오차({hip_z_diff*100:.1f}cm)")
+            return {
+                "success": False,
+                "error_message": "몸이 측면이나 사선으로 틀어진 자세가 감지되었습니다. 정확한 가슴둘레 측정을 위해 카메라를 정면으로 똑바로 바라보고 서서 다시 촬영해 주세요!"
+            }
+        
         # 3차 관문: 인체 비례가 검증된 무결한 사진만 실제 cm 및 부피 연산으로 진입 허용
         try:
             ratios, measurements_cm = self._calculate_volume_metrics(world_landmarks, actual_height_cm)
