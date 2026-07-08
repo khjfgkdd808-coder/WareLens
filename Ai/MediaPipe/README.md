@@ -53,7 +53,7 @@ project/
 
 ## 💻 환경 요구사항
 
-- Python 3.10 이상
+- **Python 3.12.3 버전** (3.13 버전은 오류 발생)
 - 리눅스 / 윈도우 서버 배포 환경 (Headless OpenCV 적용으로 GUI 장치 불필요)
 - NVIDIA GPU 가속 환경 (VRAM 12GB 이상 필수, VRAM 16GB 이상 권장, CUDA 12.1 지원)
 
@@ -78,6 +78,9 @@ venv\Scripts\activate.bat
 
 # 가상환경 활성화 (Windows PowerShell)
 venv\Scripts\Activate.ps1
+
+# 가상환경 python version 3.12 확인
+python --version
 ```
 
 ### 2단계: 교정된 통합 의존성 패키지 설치
