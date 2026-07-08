@@ -1,0 +1,98 @@
+Clip 실행
+# 패키지 설치 (fastapi, uvicorn, python-multipart 추가됨)
+pip install -r requirements.txt
+
+# 캐시 먼저 생성 (이미 했으면 생략)
+python build_vectors.py
+
+# 서버 실행
+uvicorn app:app --host 0.0.0.0 --port 8001
+
+
+------------------------------------------------------------------
+MediaPipe 실행
+#가상환경 생성
+py -3.12 -m venv venv
+
+#가상환경 활성화 
+.\venv\Scripts\Activate.ps1
+
+#
+C:\Users\user1\Desktop\warelendstest\Ai\MediaPipe\venv\Scripts\python.exe -m pip install --upgrade pip
+#
+
+pip install -r requirements.txt
+
+#
+git clone https://github.com/Zheng-Chong/CatVTON.git
+
+#
+python app.py
+
+------------------------------------------
+
+프론트 실행 
+
+npm install
+
+npm run dev
+
+# 1. 꼬여서 캐싱된 npm 임시 파일들을 강제로 완전히 비워버립니다.
+npm cache clean --force
+
+# 2. 캐시 지우고 찌꺼기가 남아있을지 모를 node_modules 폴더를 다시 한 번 완벽히 삭제
+Remove-Item -Recurse -Force node_modules, package-lock.json
+
+# 3. [★중요] 캐시 없이 깃허브 원본 서버에서 새 파일들을 100% 처음부터 새로 다운로드합니다.
+# (아까와 달리 시간이 조금 더 걸리면서 게이지가 올라갈 것입니다.)
+npm install
+
+npm install framer-motion lucide-react
+
+npm install react-hot-toast
+
+실행
+npm run dev
+
+-----------------------------------------------
+
+백엔드 실행 ( zulu 21 ) 
+
+sts 에서 file - import - Gradle - Existing Gradle Project( 선택 후 next) 
+
+- Project root directory 가장 최상위폴더로 경로설정( 설정 후 finish )
+
+# STS에서 Zulu 21 JDK 등록하기 ( 없으면 다운로드 )
+--------------------------------------------------------------
+https://www.azul.com/downloads/?package=jdk#zulu     
+
+21.0.11+10
+Azul Zulu: 21.50.19 Window x86 64-bit JDK 다운로드
+---------------------------------------------------------------
+   
+STS 상단 메뉴에서 [Window] -> [Preferences]를 클릭
+
+왼쪽 트리에서 Installed JREs 검색 후 클릭
+
+오른쪽의 [Add...] 버튼 선택
+
+[Standard VM]을 선택하고 [Next]
+
+JRE home 항목에서 [Directory...] 버튼을 눌러 Zulu 21이 설치된 폴더(예: C:\Program Files\Zulu\zulu-21)를 찾아 선택
+
+[Finish]를 눌러 등록한 후, 목록에서 Zulu 21을 체크하고 [Apply and Close]
+
+Backend/src/main/resources
+  - application.properties 2번째 줄 코드 파일저장경로 설정 
+현재 설정된 경로 => file.upload-dir=D:/warelens_uploads/
+D드라이브에 warelens_uploads 폴더 생성
+
+>Backend/src/main/java
+ >com.example.demo.config 이동 후 
+- WebConfig.java 13번째 줄 코드 데이터셋 경로 설정 ( Ai - Clip 폴더 안에 fashion_dataset을 경로로 설정 
+현재 설정된 경로 => .addResourceLocations("file:///C:/Users/user1/Desktop/warelendstest/Ai/Clip/fashion_dataset/");    ]                                                          
+
+- 최상위 폴더 우클릭 - Run As - Spring Boot App
+
+
+
