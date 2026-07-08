@@ -2,6 +2,10 @@ package com.example.demo;
 
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.*;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import java.util.*;
 
 @RestController
@@ -10,7 +14,12 @@ import java.util.*;
 public class RecommendationController {
 
     private final RecommendationService recommendationService;
-    public RecommendationController(RecommendationService recommendationService) { this.recommendationService = recommendationService; }
+    private final RestTemplate restTemplate;
+
+    public RecommendationController(RecommendationService recommendationService, RestTemplate restTemplate) { 
+        this.recommendationService = recommendationService;
+        this.restTemplate = restTemplate;
+    }
 
     @PostMapping("/upload")
     public Map<String, Object> uploadFile(@ModelAttribute UploadRequestDto requestDto) {
@@ -32,4 +41,30 @@ public class RecommendationController {
 
     @PostMapping("/validate/body")
     public Map<String, Object> validateBody(@RequestParam("file") MultipartFile file) { return recommendationService.validateBody(file); }
+
+    @PostMapping("/tryon")
+    public Map<String, Object> requestNewTryOn(@RequestBody Map<String, Object> request) {
+        try {
+            String userId = (String) request.get("taskId");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> garmentInfo = (Map<String, Object>) request.get("garment_info");
+
+            // 캐시 확인 서비스 메서드 호출
+            return recommendationService.getOrCreateFitting(userId, garmentInfo);
+        } catch (Exception e) {
+            return Map.of("status", "ERROR", "message", e.getMessage());
+        }
+    }
+    
+    @PostMapping("/gallery/save-fitting")
+    public Map<String, Object> saveFittingResult(
+            @RequestParam("taskId") String taskId,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            recommendationService.saveFittingResultToFolder(taskId, file.getBytes(), file.getOriginalFilename());
+            return Map.of("status", "SUCCESS");
+        } catch (Exception e) {
+            return Map.of("status", "ERROR", "message", e.getMessage());
+        }
+    }
 }

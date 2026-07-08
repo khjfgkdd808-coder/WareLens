@@ -17,7 +17,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
-
 @Service
 public class RecommendationService {
 
@@ -26,6 +25,8 @@ public class RecommendationService {
     @Value("${ai.mediapipe.url}") private String aiMediaPipeUrl;
 
     private final Map<String, Map<String, Object>> taskCache = new ConcurrentHashMap<>();
+    // [추가] 피팅 결과 전용 캐시
+    private final Map<String, Map<String, Object>> fittingCache = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
@@ -34,9 +35,37 @@ public class RecommendationService {
         this.objectMapper = new ObjectMapper();
     }
 
+    // [추가] 캐시 기반 피팅 로직
+    public Map<String, Object> getOrCreateFitting(String userId, Map<String, Object> garmentInfo) {
+        String garmentName = (String) garmentInfo.get("image_name");
+        String cacheKey = userId + "_" + garmentName;
+
+        // 캐시에 있으면 즉시 반환
+        if (fittingCache.containsKey(cacheKey)) {
+            System.out.println(">>> [LOG] 캐시에서 피팅 결과 반환: " + cacheKey);
+            return fittingCache.get(cacheKey);
+        }
+
+        // 없으면 AI 서버 호출
+        System.out.println(">>> [LOG] AI 서버 신규 피팅 요청: " + cacheKey);
+        String tryOnUrl = getAiTryOnUrl();
+        MultiValueMap<String, Object> tryOnBody = new LinkedMultiValueMap<>();
+        tryOnBody.add("user_id", userId);
+        tryOnBody.add("garment_name", garmentName);
+
+        ResponseEntity<Map> response = restTemplate.postForEntity(tryOnUrl, new HttpEntity<>(tryOnBody), Map.class);
+        Map<String, Object> result = response.getBody();
+
+        // 캐시에 저장 후 반환
+        if (result != null) {
+            fittingCache.put(cacheKey, result);
+        }
+        return result;
+    }
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> processRecommendation(UploadRequestDto dto) throws Exception {
-    	saveToNewFolder(dto);
+        saveToNewFolder(dto);
 
         // STEP 1. CLIP 호출
         HttpHeaders clipHeaders = new HttpHeaders();
@@ -87,17 +116,21 @@ public class RecommendationService {
                 if (count >= 2) break; 
                 String garmentName = (String) item.get("image_name");
                 try {
-                    MultiValueMap<String, Object> tryOnBody = new LinkedMultiValueMap<>();
+                  
+                	
+                	MultiValueMap<String, Object> tryOnBody = new LinkedMultiValueMap<>();
                     tryOnBody.add("user_id", userId);
                     tryOnBody.add("garment_name", garmentName);
                     
-                    ResponseEntity<Map> tryOnResponse = restTemplate.postForEntity(tryOnUrl, new HttpEntity<>(tryOnBody), Map.class);
-                    if (tryOnResponse.getBody() != null) {
-                        Map<String, Object> tryOnData = tryOnResponse.getBody();
+                    Map<String, Object> tryOnData = getOrCreateFitting(userId, item);
+                    
+                    if (tryOnData != null) {
                         tryOnData.put("garment_info", item); 
                         tryOnResultsList.add(tryOnData);
                         count++;
                     }
+                    
+                    
                 } catch (Exception e) { e.printStackTrace(); }
             }
         }
@@ -118,6 +151,22 @@ public class RecommendationService {
         return taskCache.getOrDefault(taskId, Map.of("status", "error", "message", "데이터가 없습니다."));
     }
 
+    // [추가된 기능] 특정 세션 폴더에 가상 피팅 결과물 저장
+    public void saveFittingResultToFolder(String taskId, byte[] imageBytes, String fileName) throws IOException {
+        Path rootPath = Paths.get("D:/warelens_uploads");
+        
+        // 가장 최근에 생성된 폴더(숫자가 가장 큰 폴더)를 찾습니다.
+        Optional<Path> latestFolder = Files.list(rootPath)
+                .filter(Files::isDirectory)
+                .max(Comparator.comparing(p -> Long.parseLong(p.getFileName().toString())));
+
+        if (latestFolder.isPresent()) {
+            Path target = latestFolder.get().resolve("fitting_" + fileName);
+            Files.write(target, imageBytes);
+            System.out.println(">>> [LOG] 피팅 결과물 저장 완료: " + target);
+        }
+    }
+    
     private void saveToNewFolder(UploadRequestDto dto) throws IOException {
         Path rootPath = Paths.get("D:/warelens_uploads");
         
@@ -143,7 +192,6 @@ public class RecommendationService {
         }
         System.out.println(">>> [LOG] 새로운 저장소 생성 완료: " + newFolderPath);
     }
-    
     
     public Map<String, Object> validateBody(MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -178,5 +226,9 @@ public class RecommendationService {
             
             return Map.of("status", "error");
         }
+    }
+    
+    public String getAiTryOnUrl() {
+        return aiMediaPipeUrl.replace("/api/v1/analyze/body", "/api/v1/tryon");
     }
 }
