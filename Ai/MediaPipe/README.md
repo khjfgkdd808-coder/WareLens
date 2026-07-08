@@ -92,7 +92,7 @@ pip install -r requirements.txt
 `run_catvton.py`가 참조하는 상대 경로(`../../CatVTON`)를 만족시키기 위해, 프로젝트 최상위 디렉토리에 CatVTON 공식 저장소를 클론합니다.
 
 ```bash
-git clone [https://github.com/Zheng-Chong/CatVTON.git](https://github.com/Zheng-Chong/CatVTON.git)
+git clone https://github.com/Zheng-Chong/CatVTON.git
 ```
 
 ### 4단계: MediaPipe 3D AI 가중치 모델 다운로드
@@ -100,7 +100,7 @@ git clone [https://github.com/Zheng-Chong/CatVTON.git](https://github.com/Zheng-
 
 ```bash
 mkdir -p models
-curl -L [https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task) -o models/analyzer_pose_heavy.task
+curl -L https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task -o models/analyzer_pose_heavy.task
 ```
 
 ### 5단계: 통합 서버 부팅
