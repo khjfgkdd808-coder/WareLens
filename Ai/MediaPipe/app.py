@@ -1,4 +1,5 @@
 # app.py
+import os  # 💡 로컬 파일 탐색을 위해 추가됨
 import io
 import logging
 import base64
@@ -97,29 +98,46 @@ async def analyze_body(
     except Exception as e:
         raise EngineError(500, "ANALYSIS_CRASH", str(e))
 
+# 💡 수정된 VTON API 엔드포인트
 @app.post("/api/v1/tryon")
 async def execute_virtual_tryon(
     user_id: str = Form(...),
-    garment_file: UploadFile = File(...)
+    garment_file: UploadFile = File(None),  # 필수(...)에서 선택(None)으로 변경
+    garment_name: str = Form(None)          # 프론트엔드가 보내는 텍스트 데이터 허용
 ):
     if user_id not in SESSION_STORAGE:
         raise EngineError(400, "CACHE_NOT_FOUND", "유저 세션이 없습니다. 분석 API를 선행하세요.")
         
+    # 둘 다 안 보냈을 경우 방어
+    if not garment_file and not garment_name:
+        raise EngineError(400, "EMPTY_GARMENT_SOURCE", "합성 대상 의류 소스(파일 또는 파일명)가 제공되지 않았습니다.")
+        
     try:
         origin_cv_img = SESSION_STORAGE[user_id]["origin_cv_img"]
-        garment_bytes = await garment_file.read()
         
-        # 💡 Base64 반환 구조 유지 (이전 브레인스토밍의 옵션 A 채택)
+        # 💡 프론트엔드 요청 방식에 따라 유연하게 바이트 데이터 확보
+        if garment_file:
+            garment_bytes = await garment_file.read()
+        else:
+            # 로컬 데이터셋에서 이미지 찾아오기
+            clip_dataset_path = os.path.join("..", "Clip", "fashion_dataset", garment_name)
+            if not os.path.exists(clip_dataset_path):
+                raise EngineError(404, "GARMENT_FILE_LOST", f"데이터셋 저장소 내에 파일({garment_name})을 찾을 수 없습니다.")
+            with open(clip_dataset_path, "rb") as f:
+                garment_bytes = f.read()
+        
+        # Base64 반환 구조 유지
         tryon_base64 = app.state.catvton.execute_tryon(garment_bytes=garment_bytes, origin_cv_img=origin_cv_img)
         
         return {
             "status": "SUCCESS",
             "data": {"tryon_image_base64": tryon_base64}
         }
+    except EngineError:
+        raise
     except Exception as e:
         raise EngineError(500, "TRYON_INFERENCE_FAILED", str(e))
 
 if __name__ == "__main__":
     import uvicorn
-    # "app:app" 문자열 대신, 위에 선언된 app 인스턴스를 직접 넘깁니다.
     uvicorn.run(app, host=settings.server_host, port=settings.server_port)
