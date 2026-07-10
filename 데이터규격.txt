@@ -1,0 +1,22 @@
+데이터항목         Front (전 -> 후)          Back                 Clip                       Tryon                      MediaPipe
+
+사용자ID            userId                       매핑삭제            user_id(유지)           user_id (유지)           user_id(유지)
+                       ->user_id
+
+키                     height                      매핑삭제            (미사용)                  (미사용)                  height_cm(유지)
+                       ->height_cm
+
+성별                 gender (유지)             직접전달            (미사용)                  (미사용)                  gender(유지)
+
+옷 이미지명       image_name (유지)      변환삭제            image_name(유지)    garment_name        (미사용)
+                                                                                                             ->image_name
+                                                                                                            변환 불가 시 
+                                                                                                            백엔드 변환 유지
+
+1. 프론트엔드 : 사용자ID, 키 변경
+
+2 .백엔드 : 모든 변환 로직 삭제 후 데이터 직접 전달 // TryOn 서버 수정 불가시 해당부분 변환유지
+
+3. TryOn 서버 : 입력 파라미터를 'garment_name'에서 'image_name'으로 수정
+
+4. CLIP/MediaPIpe : 현재 규격 유지

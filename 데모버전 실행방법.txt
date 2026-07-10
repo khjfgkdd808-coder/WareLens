@@ -1,3 +1,5 @@
+Clip / MediaPipe / Front 각 폴더의 실행방법 먼저 진행 
+
 Clip 실행
 # 패키지 설치 (fastapi, uvicorn, python-multipart 추가됨)
 pip install -r requirements.txt
