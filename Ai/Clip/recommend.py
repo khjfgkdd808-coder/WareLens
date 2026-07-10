@@ -3,14 +3,22 @@ recommend.py - 코사인 유사도 기반 Top-K 추천 로직
 ===================================================
 쿼리 임베딩과 데이터셋 임베딩 간의 유사도를 계산하고 Top-K 결과를 반환합니다.
 
+[색상 점수 반영]
+CLIP은 모양/카테고리는 잘 잡지만 색상 구분이 상대적으로 약해서,
+추천 결과에 색상이 크게 다른 의류가 섞이는 문제가 있었습니다.
+이를 보완하기 위해 color_analysis.py로 쿼리 이미지의 주요 색상을
+추출하고, 메타데이터의 color 필드와 비교해 보조 점수를 더합니다.
+
+    최종 score = clip_score * 0.85 + color_score * 0.15
+
+색상 점수는 메타데이터가 결합된 이후에만 계산 가능하므로
+(추천 후보의 color 필드가 필요), find_top_k() → attach_metadata()
+→ apply_color_boost() 순서로 파이프라인을 구성합니다.
+(전체 흐름은 main.py, service.py에서 확인 가능)
+
 [향후 확장 계획]
-현재는 CLIP 유사도만 사용하지만, 아래 구조로 메타데이터 가중치를 추가할 수 있습니다.
-
-    score = clip_score * 0.7 + category_score * 0.2 + color_score * 0.1
-
-확장 시 compute_final_score() 함수를 추가하고,
-find_top_k()에서 clip_score 대신 compute_final_score()를 사용하면 됩니다.
-메타데이터는 metadata.csv (category, sub_category, color, pattern 컬럼)에서 읽을 예정입니다.
+category 등 다른 메타데이터 가중치도 같은 방식(boost 함수 추가)으로
+확장할 수 있습니다.
 """
 
 import os
@@ -23,6 +31,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from utils import load_image
 from metadata import METADATA_FIELDS
+from color_analysis import compute_color_score
+
+# 색상 점수 가중치 (최종 score = clip_score * (1 - COLOR_WEIGHT) + color_score * COLOR_WEIGHT)
+COLOR_WEIGHT = 0.15
 
 # ----------------------------------------------------------
 # 한글 폰트 설정 (Windows 기준)
@@ -62,15 +74,8 @@ def find_top_k(
 ) -> list[dict]:
     """
     쿼리 임베딩과 가장 유사한 이미지 Top-K를 찾아 반환합니다.
-
-    [향후 확장 포인트]
-    메타데이터 점수를 추가하려면 compute_clip_scores() 호출 후
-    아래처럼 가중합 처리를 추가하면 됩니다.
-
-        clip_scores     = compute_clip_scores(query_embedding, dataset_embeddings)
-        category_scores = compute_category_scores(query_metadata, dataset_metadata)
-        color_scores    = compute_color_scores(query_metadata, dataset_metadata)
-        final_scores    = clip_scores * 0.7 + category_scores * 0.2 + color_scores * 0.1
+    이 단계에서는 CLIP 유사도만 사용합니다 (메타데이터 기반 색상 점수는
+    이후 apply_color_boost()에서 메타데이터 결합 후에 적용됩니다).
 
     Args:
         query_embedding    (np.ndarray) : shape (1, 512)
@@ -85,13 +90,14 @@ def find_top_k(
                 "path"      : str,   # 이미지 파일 경로
                 "filename"  : str,   # 파일명만 추출
                 "clip_score": float, # CLIP 코사인 유사도 (0~1)
-                "score"     : float, # 최종 점수 (현재는 clip_score와 동일)
+                "score"     : float, # 최종 점수 (이 시점에는 clip_score와 동일,
+                                      #  apply_color_boost() 호출 후 보정됨)
             }
     """
     # CLIP 유사도 계산
     clip_scores = compute_clip_scores(query_embedding, dataset_embeddings)
 
-    # 현재는 최종 점수 = CLIP 점수 (향후 가중합으로 교체 예정)
+    # 이 단계의 최종 점수는 CLIP 점수와 동일 (색상 보정은 이후 단계에서 적용)
     final_scores = clip_scores
 
     # (경로, clip_score, final_score) 묶기
@@ -113,6 +119,55 @@ def find_top_k(
     for rank, result in enumerate(results[:top_k], start=1):
         result["rank"] = rank
         top_results.append(result)
+
+    return top_results
+
+
+def apply_color_boost(
+    recommendations: list[dict],
+    query_colors   : list[tuple[str, float]],
+    top_k          : int,
+) -> list[dict]:
+    """
+    메타데이터(color 필드)가 결합된 추천 후보 목록에 색상 점수를 반영하여
+    최종 점수를 재계산하고 다시 정렬합니다.
+
+    [왜 find_top_k()에서 자르기 전에 더 많은 후보를 가져와야 하는가]
+    색상이 다르다는 이유로 CLIP 순위에서는 11~20위권이었던 후보가
+    색상 보정 후 Top-10 안으로 들어올 수 있습니다. find_top_k()가
+    이미 Top-10만 잘라서 넘기면 이런 역전이 반영되지 않으므로,
+    호출하는 쪽(main.py/service.py)에서 find_top_k()를 더 넉넉한
+    개수(예: top_k * 3)로 호출한 뒤 이 함수에서 최종 top_k로 자릅니다.
+
+    최종 점수 계산식:
+        score = clip_score * (1 - COLOR_WEIGHT) + color_score * COLOR_WEIGHT
+
+    Args:
+        recommendations (list[dict])             : find_top_k() + attach_metadata() 결과.
+                                                      각 항목에 "color" 필드가 있어야 함.
+        query_colors     (list[tuple[str, float]]): color_analysis.extract_dominant_colors()
+                                                      반환값. 쿼리 이미지의 주요 색상 목록.
+        top_k            (int)                    : 최종적으로 남길 결과 수
+
+    Returns:
+        list[dict]: 색상 점수가 반영되어 재정렬된 Top-K 추천 결과.
+            각 항목에 "color_score" 필드가 추가됩니다.
+    """
+    for rec in recommendations:
+        color_score = compute_color_score(query_colors, rec.get("color", "-"))
+        rec["color_score"] = color_score
+        rec["score"] = (
+            rec["clip_score"] * (1 - COLOR_WEIGHT) + color_score * COLOR_WEIGHT
+        )
+
+    # 보정된 점수 기준 재정렬
+    recommendations = sorted(recommendations, key=lambda x: x["score"], reverse=True)
+
+    # Top-K로 자르고 순위 재부여
+    top_results = []
+    for rank, rec in enumerate(recommendations[:top_k], start=1):
+        rec["rank"] = rank
+        top_results.append(rec)
 
     return top_results
 
@@ -161,7 +216,7 @@ def build_results_dataframe(recommendations: list[dict]) -> pd.DataFrame:
         pd.DataFrame: 추천 결과 테이블
     """
     # 컬럼 순서를 명시적으로 지정 (path는 내부용이라 제외)
-    base_columns = ["rank", "filename", "score", "clip_score"]
+    base_columns = ["rank", "filename", "score", "clip_score", "color_score", "reason"]
     columns = base_columns + [f for f in METADATA_FIELDS if f in (recommendations[0] if recommendations else {})]
 
     df = pd.DataFrame(recommendations)

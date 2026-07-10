@@ -60,11 +60,13 @@ get_recommendations()가 반환하는 각 항목은 POST /internal/clip/recommen
 import io
 from PIL import Image
 
-from embedding     import load_clip_model, get_average_embedding
-from cache_manager import load_cache
-from recommend     import find_top_k
-from metadata      import load_metadata, attach_metadata
-from exceptions    import (
+from embedding       import load_clip_model, get_average_embedding
+from cache_manager   import load_cache
+from recommend       import find_top_k, apply_color_boost
+from metadata        import load_metadata, attach_metadata
+from color_analysis  import extract_dominant_colors, merge_color_profiles
+from explainer       import generate_reasons
+from exceptions      import (
     ServiceError,
     NotInitializedError,
     CacheNotFoundError,
@@ -75,11 +77,12 @@ from exceptions    import (
     InferenceFailedError,
 )
 
-# [설계 노트] 쿼리 이미지 개수 제한은 이 모듈에서 두지 않습니다.
-# API 명세상 프론트엔드/백엔드가 1~3장으로 제한하기로 되어 있지만,
-# 그 제약은 UI/API 정책의 영역이고 AI 추론 로직은 입력 개수와 무관하게
-# 동작해야 책임이 깔끔하게 분리됩니다. (1장이든 10장이든 평균 임베딩으로 처리 가능)
-# 개수 제한이 필요해지면 exceptions.py의 TooManyImagesError를 재사용하면 됩니다.
+# CLIP 1차 후보군을 요청받은 top_k의 몇 배로 가져올지
+CANDIDATE_POOL_MULTIPLIER = 3
+
+# 추천 이유(reason)를 생성할 상위 N개
+# 나중에 이 값만 늘리면 더 많은 항목에 reason이 생성됩니다.
+EXPLAIN_TOP_N = 5
 
 # ----------------------------------------------------------
 # 전역 상태
@@ -92,6 +95,7 @@ _state = {
     "dataset_embeddings": None,  # np.ndarray, shape (N, 512)
     "dataset_paths"     : None,  # list[str]
     "metadata_dict"     : None,  # dict[str, dict[str, str]]
+    "device"            : None,  # "cuda" or "cpu"
     "initialized"       : False,
 }
 
@@ -135,6 +139,7 @@ def initialize() -> None:
     _state["dataset_embeddings"] = dataset_embeddings
     _state["dataset_paths"]      = dataset_paths
     _state["metadata_dict"]      = metadata_dict
+    _state["device"]             = next(model.parameters()).device.type
     _state["initialized"]        = True
 
     print(f"[service] 초기화 완료 - 데이터셋 {len(dataset_paths)}장 준비됨")
@@ -195,9 +200,10 @@ def get_recommendations(
     1. 입력값 검증 (이미지 개수, top_k 값)
     2. 바이트 → PIL Image 변환
     3. CLIP 임베딩 생성 (여러 장이면 평균 벡터 사용)
-    4. 데이터셋과 코사인 유사도 비교 → Top-K 추출
+    4. 데이터셋과 코사인 유사도 비교 → 1차 후보군 추출 (top_k보다 넉넉하게)
     5. 메타데이터(category/color/pattern 등) 결합
-    6. JSON 직렬화 가능한 dict 리스트로 반환
+    6. 쿼리 이미지 주요 색상 추출 + 색상 점수 보정 후 최종 top_k 재정렬
+    7. JSON 직렬화 가능한 dict 리스트로 반환
 
     Args:
         query_images (list[bytes]): 쿼리 이미지의 바이트 데이터 리스트.
@@ -212,8 +218,9 @@ def get_recommendations(
             {
                 "rank"        : int,    # 순위 (1부터 시작)
                 "image_name"  : str,    # 추천 이미지 파일명 (예: "15970.jpg")
-                "score"       : float,  # 최종 유사도 점수 (0~1)
+                "score"       : float,  # 최종 점수 (clip_score와 color_score의 가중합)
                 "clip_score"  : float,  # CLIP 코사인 유사도
+                "color_score" : float,  # 쿼리 이미지 주요 색상과의 일치도 (0~1)
                 "category"    : str,    # metadata.csv 필드 (매칭 안 되면 "-")
                 "sub_category": str,
                 "article_type": str,
@@ -255,7 +262,7 @@ def get_recommendations(
     pil_images = [_bytes_to_image(img_bytes) for img_bytes in query_images]
 
     # ----------------------------------------------------------
-    # 3~5. 임베딩 생성 → 추천 계산 → 메타데이터 결합
+    # 3~5. 임베딩 생성 → 1차 후보군 추출(넉넉하게) → 메타데이터 결합
     # 이 구간에서 예기치 못한 에러(GPU OOM 등)가 나면 InferenceFailedError로 통일
     # ----------------------------------------------------------
     try:
@@ -263,26 +270,55 @@ def get_recommendations(
             pil_images, _state["model"], _state["processor"]
         )
 
+        # 색상 보정으로 순위가 바뀔 수 있으므로 top_k보다 넉넉한 후보군을 가져옴
+        candidate_pool_size = top_k * CANDIDATE_POOL_MULTIPLIER
         recommendations = find_top_k(
             query_embedding    = query_embedding,
             dataset_paths      = _state["dataset_paths"],
             dataset_embeddings = _state["dataset_embeddings"],
-            top_k              = top_k,
+            top_k              = candidate_pool_size,
         )
 
         recommendations = attach_metadata(recommendations, _state["metadata_dict"])
+
+        # ----------------------------------------------------------
+        # 6. 쿼리 이미지 주요 색상 추출 + 색상 점수 보정
+        # 쿼리 이미지가 여러 장이면 색상 비율을 평균내어 병합합니다.
+        # ----------------------------------------------------------
+        color_profiles = [extract_dominant_colors(img) for img in pil_images]
+        query_colors = merge_color_profiles(color_profiles)
+
+        recommendations = apply_color_boost(recommendations, query_colors, top_k=top_k)
+
+        # ----------------------------------------------------------
+        # 7. 추천 이유 생성 (CLIP 텍스트 프로브 - 비교형)
+        # 쿼리 이미지와 추천 결과를 비교해 일치 항목 기반으로 이유 생성.
+        # query_embeddings: 개별 임베딩 리스트 (평균 벡터가 아님)
+        #   → analyze_query_attrs() 내부에서 교집합 전략으로 공통 특성 추출
+        # path 제거 전에 실행해야 dataset_embeddings 조회 가능.
+        # ----------------------------------------------------------
+        query_embeddings_list = [
+            get_average_embedding([img], _state["model"], _state["processor"])
+            for img in pil_images
+        ]
+        recommendations = generate_reasons(
+            recommendations    = recommendations,
+            query_embeddings   = query_embeddings_list,
+            dataset_embeddings = _state["dataset_embeddings"],
+            dataset_paths      = _state["dataset_paths"],
+            model              = _state["model"],
+            processor          = _state["processor"],
+            device             = _state["device"],
+            top_n              = EXPLAIN_TOP_N,
+            query_colors       = query_colors,  # K-means 색상 결과 전달
+        )
     except ServiceError:
-        # 이미 명확한 ServiceError라면 그대로 전파 (불필요한 이중 래핑 방지)
         raise
     except Exception as e:
         raise InferenceFailedError(f"추천 처리 중 오류가 발생했습니다: {e}")
 
     # ----------------------------------------------------------
-    # 6. 백엔드 API 응답 형식에 맞춰 필드 정리
-    #    - path(내부 절대경로)는 제거: 서버 로컬 경로를 외부에 노출할 필요 없음
-    #    - filename -> image_name으로 키 이름 변경 (API 명세 기준)
-    #      (CLI용 main.py/recommend.py 쪽 "filename" 키는 그대로 유지하고,
-    #       여기 service.py 응답에서만 별도로 이름을 바꿔서 내보냅니다)
+    # 8. 백엔드 API 응답 형식에 맞춰 필드 정리
     # ----------------------------------------------------------
     for rec in recommendations:
         rec.pop("path", None)

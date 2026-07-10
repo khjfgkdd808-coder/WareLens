@@ -37,6 +37,13 @@ from exceptions import ServiceError
 # main.py(CLI)의 TOP_K와 독립적입니다 - 여기를 바꿔도 main.py에 영향 없음
 TOP_K = 10
 
+# 추천 이유(reason)를 생성할 상위 N개
+# service.py의 EXPLAIN_TOP_N과 연동됩니다.
+# 여기를 바꾸면 service.py의 값도 같이 변경해야 합니다.
+# (추후 단일 설정 파일(config.py)로 통합 예정)
+import service as _svc
+_svc.EXPLAIN_TOP_N = 5  # 기본값 유지, 변경 시 이 값만 수정
+
 # ----------------------------------------------------------
 # 로깅 설정
 # ----------------------------------------------------------
@@ -176,6 +183,8 @@ async def recommend(
         - image_name  : 추천 이미지 파일명 (예: "15970.jpg")
         - score       : 유사도 점수 (0~1, 높을수록 유사)
         - clip_score  : CLIP 코사인 유사도
+        - reason      : 추천 이유 키워드 (예: "네이비 체크 슬림핏 셔츠")
+                        상위 EXPLAIN_TOP_N개에만 생성, 나머지는 null
         - category    : 카테고리 (예: "TOP")
         - sub_category: 세부 카테고리 (예: "SHIRT")
         - article_type: 상품 유형 (예: "Shirts")

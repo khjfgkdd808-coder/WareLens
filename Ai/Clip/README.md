@@ -1,6 +1,7 @@
 # 의류 이미지 유사도 추천 시스템
 
 CLIP 모델과 코사인 유사도를 이용해 입력 이미지와 유사한 의류를 추천합니다.
+추천 이유를 자동 생성하고, 색상 보정으로 추천 정확도를 높입니다.
 
 ---
 
@@ -19,10 +20,12 @@ project/
 ├── app.py                 # FastAPI 서버 (백엔드 연동 / Swagger UI)
 ├── service.py             # 백엔드(FastAPI 등) 연동용 인터페이스
 ├── exceptions.py          # 백엔드 연동용 커스텀 예외 클래스
+├── explainer.py           # CLIP 텍스트 프로브 기반 추천 이유 생성
 ├── build_vectors.py       # 데이터셋 임베딩 생성 및 캐시 저장
 ├── detector.py            # YOLO 기반 사람 영역 탐지/crop
 ├── embedding.py           # CLIP 모델 로드 / 이미지 임베딩 생성
-├── recommend.py           # 유사도 계산 / Top-K 추천 / 시각화 / CSV 저장
+├── recommend.py           # 유사도 계산 / Top-K 추천 / 색상 보정 / 시각화 / CSV 저장
+├── color_analysis.py      # 쿼리 이미지 색상 추출 및 metadata 색상 카테고리 매핑
 ├── cache_manager.py       # 캐시 저장 / 로드
 ├── metadata.py            # 의류 메타데이터(csv) 로드 및 결합
 ├── metadata.csv           # 이미지별 속성 정보 (category, color, pattern 등)
@@ -43,7 +46,7 @@ project/
 ## 설치 방법
 
 ```bash
-pip install torch transformers Pillow scikit-learn matplotlib tqdm ultralytics pandas
+pip install torch transformers Pillow scikit-learn matplotlib tqdm ultralytics pandas fastapi uvicorn python-multipart
 ```
 
 GPU(NVIDIA)를 사용하려면 CUDA 버전 PyTorch가 설치되어 있어야 합니다. 아래 명령어로 확인하세요:
@@ -132,29 +135,32 @@ http://localhost:8001/health
 
 ## 출력 예시
 
-콘솔에는 간단한 정보(순위/파일명/유사도)만 출력됩니다.
+콘솔에는 순위/파일명/유사도/추천 이유가 출력됩니다.
 
 ```
-Top 10 Recommendations
+=======================================================
+  [ 추천 결과 ]
+-------------------------------------------------------
+   1. 15970.jpg
+      score: 0.9120  → 색상(네이비)·패턴(체크)이 유사한 셔츠입니다
 
- 1. 15970.jpg
-    Similarity: 0.9630
+   2. 19547.jpg
+      score: 0.8870  → 색상(블루)이 유사한 맨투맨 스웨트셔츠입니다
 
- 2. 19547.jpg
-    Similarity: 0.8385
+   3. 23451.jpg
+      score: 0.8550  → 전반적인 스타일이 유사한 티셔츠입니다
 
-...
-
-  결과 CSV 저장 완료: result.csv  (10행)
+   4. 09823.jpg
+      score: 0.8210              ← Top-5 이후는 reason 없음
+=======================================================
 ```
 
-전체 메타데이터(category, color, pattern 등)는 `result.csv`에 모두 저장됩니다.
+전체 메타데이터(category, color, pattern 등)와 추천 이유는 `result.csv`에 모두 저장됩니다.
 
 ```
-rank,filename,score,clip_score,category,sub_category,article_type,color,season,usage,gender,pattern,fit,fabric
-1,15970.jpg,0.963,0.963,TOP,SHIRT,Shirts,NAVY,Fall,Casual,Men,CHECK,SLIM,COTTON
-2,19547.jpg,0.8385,0.8385,TOP,SWEATSHIRT,Sweatshirts,BLUE,Fall,Casual,Men,SOLID,OTHER,COTTON
-...
+rank,filename,score,clip_score,color_score,reason,category,sub_category,...
+1,15970.jpg,0.912,0.890,0.62,색상(네이비)·패턴(체크)이 유사한 셔츠입니다,TOP,SHIRT,...
+2,19547.jpg,0.887,0.870,0.00,색상(블루)이 유사한 맨투맨 스웨트셔츠입니다,TOP,SWEATSHIRT,...
 ```
 
 시각화 창에는 쿼리 이미지와 Top-5 추천 결과가 함께 표시되며,
@@ -170,10 +176,12 @@ rank,filename,score,clip_score,category,sub_category,article_type,color,season,u
 | `app.py` | FastAPI HTTP 서버 (백엔드 연동 + Swagger UI) |
 | `service.py` | 백엔드(FastAPI 등) 연동용 인터페이스 |
 | `exceptions.py` | 백엔드 연동용 커스텀 예외 클래스 (에러 코드/HTTP 상태코드) |
+| `explainer.py` | CLIP 텍스트 프로브로 추천 이유 자동 생성 |
 | `build_vectors.py` | 데이터셋 임베딩 생성 및 캐시 저장 (YOLO crop 포함) |
 | `detector.py` | YOLO로 사람 영역 탐지 및 crop |
 | `embedding.py` | CLIP 모델 로드, 이미지 → 벡터 변환 |
-| `recommend.py` | 유사도 계산, Top-K 추천, 시각화, CSV 저장 |
+| `recommend.py` | 유사도 계산, Top-K 추천, 색상 점수 보정, 시각화, CSV 저장 |
+| `color_analysis.py` | 쿼리 이미지 색상 추출(K-means) 및 metadata 색상 카테고리 매핑 |
 | `cache_manager.py` | 캐시 저장/로드 |
 | `metadata.py` | metadata.csv 로드 및 추천 결과에 결합 |
 | `utils.py` | 이미지 로드, 경로 처리 등 공통 함수 |
@@ -185,9 +193,13 @@ rank,filename,score,clip_score,category,sub_category,article_type,color,season,u
 `main.py` 상단의 설정값을 수정하면 됩니다.
 
 ```python
-TOP_K         = 10   # 추천 수 (텍스트 출력 기준)
-TOP_K_DISPLAY = 5    # 시각화에서 보여줄 추천 수
+TOP_K                    = 10  # 추천 수
+TOP_K_DISPLAY            = 5   # 시각화에서 보여줄 추천 수
+EXPLAIN_TOP_N            = 5   # 추천 이유를 생성할 상위 N개 (늘리면 더 많은 항목에 이유 표시)
+CANDIDATE_POOL_MULTIPLIER = 3  # 색상 보정을 위해 1차로 가져올 후보군 배수 (TOP_K × 이 값)
 ```
+
+`app.py`(서버)와 `service.py`(서버 내부)의 설정값은 독립적으로 관리됩니다.
 
 ---
 
@@ -212,6 +224,77 @@ TOP_K_DISPLAY = 5    # 시각화에서 보여줄 추천 수
 
 ---
 
+## 색상 보정 (color boost)
+
+CLIP은 모양/카테고리는 잘 잡지만 색상 구분은 상대적으로 약해서, 추천 결과에 색상이 크게 다른 의류가 섞여 나올 수 있습니다. 이를 보완하기 위해 쿼리 이미지의 주요 색상을 추출해 보조 점수로 반영합니다.
+
+### 동작 방식
+
+1. `color_analysis.py`가 K-means로 쿼리 이미지 **중앙 50% 영역**의 주요 색상을 최대 3개까지 추출하고, 각 색상을 metadata.csv의 14개 색상 카테고리(BLACK, WHITE, NAVY 등) 중 가장 가까운 것으로 매핑합니다.
+2. CLIP 유사도로 1차 후보군을 `TOP_K * CANDIDATE_POOL_MULTIPLIER`(기본 3배)만큼 넉넉하게 가져옵니다.
+3. 각 후보의 `color` 메타데이터가 쿼리의 주요 색상과 일치하면 가산점을 받습니다.
+4. 최종 점수로 재정렬한 뒤 `TOP_K`만큼 잘라 반환합니다.
+
+```
+최종 score = clip_score * 0.85 + color_score * 0.15
+```
+
+### 왜 중앙 50% 영역만 사용하는가
+
+이미지 전체 픽셀을 쓰면 흰 배경처럼 넓은 단색 배경이 주요 색상으로 잘못 추출됩니다. 중앙 50% 영역만 사용하면 의류가 중앙에 있는 경우(펼쳐놓은 사진, 착용샷 모두) 배경 영향을 자연스럽게 줄일 수 있습니다. 추가 모델 없이 속도 영향도 거의 없습니다.
+
+### 왜 후보군을 넉넉하게 가져오는가
+
+CLIP 1차 순위에서는 11~20위권이었지만 색상이 일치해서 보정 후 Top-10 안에 들어오는 경우가 있습니다. `find_top_k()`가 처음부터 Top-10만 반환하면 이런 역전이 반영되지 않으므로, `recommend.py`의 `apply_color_boost()`를 호출하기 전에 더 넓은 후보군(`CANDIDATE_POOL_MULTIPLIER`)을 가져오도록 설계했습니다.
+
+### 쿼리 이미지가 여러 장인 경우
+
+`color_analysis.merge_color_profiles()`가 각 이미지의 색상 비율을 평균내어 병합합니다. 단순 합산이 아니라 평균을 내는 이유는, 합산하면 이미지 장수만큼 비율 합이 커져서(예: 2장이면 합이 2.0) `color_score`가 0~1 범위를 벗어나 점수 체계가 깨지기 때문입니다.
+
+### 설정값 변경
+
+`recommend.py`의 `COLOR_WEIGHT`(기본 0.15)로 색상 점수의 영향력을 조절할 수 있습니다. `main.py`/`service.py`의 `CANDIDATE_POOL_MULTIPLIER`로 1차 후보군 크기를 조절할 수 있습니다.
+
+### 색상 매핑 기준 조정
+
+`color_analysis.py`의 `COLOR_REFERENCE_RGB`에 14개 색상 카테고리의 기준 RGB 값이 정의되어 있습니다. 실제 추천 결과를 보면서 특정 색상이 자주 잘못 분류되면 이 표의 값만 조정하면 됩니다.
+
+---
+
+## 추천 이유 생성 (explainer)
+
+추천 결과마다 "왜 이 옷이 추천됐는지"를 자동으로 생성합니다.
+
+### 동작 원리 (CLIP 텍스트 프로브 - 비교형)
+
+1. 쿼리 이미지(들)의 특성을 CLIP 텍스트 프로브로 분석 (색상/패턴/핏/카테고리)
+   - 쿼리가 여러 장이면 교집합 전략으로 공통 특성만 추출
+   - 색상은 K-means 결과를 우선 사용 (CLIP 프로브보다 정확)
+2. 추천 결과의 특성을 분석 (metadata 우선, 없으면 CLIP 프로브)
+3. 쿼리 특성 vs 결과 특성 비교 → 일치 항목으로 이유 문구 생성
+
+```
+쿼리: 네이비 체크 셔츠
+결과: 네이비 체크 셔츠
+→ "색상(네이비)·패턴(체크)이 유사한 셔츠입니다"
+
+쿼리: 블랙 맨투맨 (여러 장, 패턴 불일치)
+결과: 블랙 단색 맨투맨
+→ "색상(블랙)이 유사한 맨투맨 스웨트셔츠입니다"
+```
+
+### 패턴 처리 규칙
+
+- 쿼리와 결과 패턴이 정확히 일치할 때만 패턴을 이유로 표시
+- `OTHER` 패턴은 분류 불가로 이유에서 생략 (억지 추론 방지)
+- `SOLID`(단색)는 색상에 이미 반영되므로 패턴 이유에서 생략
+
+### 설정값
+
+`main.py`와 `service.py`의 `EXPLAIN_TOP_N`(기본 5)으로 이유를 생성할 항목 수를 조정할 수 있습니다. 이 값 이후 항목은 `reason: null`로 반환됩니다.
+
+---
+
 ## 백엔드 연동 (FastAPI 등)
 
 `service.py`가 백엔드에서 import할 단일 진입점입니다. 백엔드 담당자는 CLIP/YOLO/캐시 내부 구현을 몰라도 아래 두 함수만 사용하면 됩니다.
@@ -222,7 +305,7 @@ TOP_K_DISPLAY = 5    # 시각화에서 보여줄 추천 수
 POST /internal/clip/recommend
 Content-Type: multipart/form-data
 
-필드: style_images (File[], 1~3장, jpg/png/webp)
+필드: style_images (File[], 1장 이상, jpg/png/webp)
 ```
 
 ### 사용 예시
@@ -276,18 +359,31 @@ async def service_error_handler(request, exc: ServiceError):
 | `MODEL_LOAD_FAILED` | 503 | CLIP 모델 로딩 실패 (네트워크 차단 등) |
 | `INFERENCE_FAILED` | 500 | 추론 중 예기치 못한 에러 (GPU 메모리 부족 등) |
 
-> `TOO_MANY_IMAGES`는 `exceptions.py`에 정의는 되어 있지만 `service.py`에서는 사용하지 않습니다. 이미지 개수(1~3장) 제한은 프론트엔드/백엔드의 정책 영역으로 판단해 AI 쪽에서는 강제하지 않기로 결정했습니다. 필요해지면 `service.py`에서 다시 활성화할 수 있습니다.
+> `TOO_MANY_IMAGES`는 `exceptions.py`에 정의는 되어 있지만 `service.py`에서는 사용하지 않습니다. 이미지 개수(1~3장) 제한은 프론트엔드/백엔드의 정책 영역으로 판단해 AI 쪽에서는 강제하지 않기로 결정했습니다.
 
 반환값 예시 (= API 응답의 `recommendations` 배열 항목):
 ```python
 [
     {
-        "rank": 1, "image_name": "15970.jpg", "score": 0.963, "clip_score": 0.963,
+        "rank": 1,
+        "image_name": "15970.jpg",
+        "score": 0.912,
+        "clip_score": 0.890,
+        "color_score": 0.620,
+        "reason": "색상(네이비)·패턴(체크)이 유사한 셔츠입니다",
         "category": "TOP", "sub_category": "SHIRT", "article_type": "Shirts",
         "color": "NAVY", "season": "Fall", "usage": "Casual", "gender": "Men",
         "pattern": "CHECK", "fit": "SLIM", "fabric": "COTTON",
     },
-    ...
+    {
+        "rank": 6,
+        "image_name": "23451.jpg",
+        "score": 0.810,
+        "clip_score": 0.790,
+        "color_score": 0.000,
+        "reason": null,   ← EXPLAIN_TOP_N(기본 5) 이후는 null
+        ...
+    },
 ]
 ```
 
@@ -301,6 +397,7 @@ async def service_error_handler(request, exc: ServiceError):
 | `image_url` | 미포함. 백엔드에서 `image_name` 기준으로 정적 파일 경로를 조립 |
 | `style_images` 개수(1~3장) | AI 쪽(`service.py`)에서는 개수를 제한하지 않음. 프론트엔드/백엔드가 정책으로 관리 |
 | `style_analysis` | **이번 단계에서 미구현.** `recommendations`만 제공하며, 취향 분석은 1차 고도화 단계에서 별도 추가 예정 |
+| `reason` | **추가됨 (명세 외).** CLIP 텍스트 프로브로 자동 생성. Top-5만 생성, 이후는 null |
 | 메타데이터 필드 | 명세보다 많은 11개 필드를 전부 포함 (`article_type`, `season`, `usage`, `gender`, `fit`, `fabric` 추가) — 필요한 필드만 프론트에서 선택적으로 사용 |
 
 ---
@@ -330,8 +427,9 @@ API 명세의 `style_analysis` 필드는 현재 미구현입니다. 계획된 �
 `crop_person_region()`을 적용하면 됩니다.
 (이미 `build_vectors.py`에서 검증된 동일 함수를 재사용)
 
-### 3. 메타데이터 가중치
-현재는 CLIP 유사도만 사용하지만, 아래와 같이 메타데이터 가중치를 추가할 예정입니다.
+### 3. 메타데이터 가중치 고도화
+현재 색상(COLOR_WEIGHT=0.15)만 보조 점수로 반영하고 있습니다.
+카테고리 등 다른 메타데이터도 가중치에 추가할 예정입니다.
 
 ```
 최종 점수 = CLIP 유사도 * 0.7
@@ -339,4 +437,4 @@ API 명세의 `style_analysis` 필드는 현재 미구현입니다. 계획된 �
           + color 점수    * 0.1
 ```
 
-확장 시 `recommend.py`의 `find_top_k()` 함수 내 주석 처리된 확장 포인트를 참고하세요.
+확장 시 `recommend.py`의 `apply_color_boost()` 함수를 참고해 동일 패턴으로 확장하면 됩니다.
