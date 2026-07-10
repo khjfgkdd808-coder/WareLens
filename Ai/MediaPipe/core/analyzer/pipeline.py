@@ -1,5 +1,4 @@
 # core/analyzer/pipeline.py
-import os
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -9,22 +8,39 @@ import math
 from typing import Dict, Tuple, Any
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from dataclasses import dataclass
+
+# 설정 관리자 가져오기
+from core.config import settings
 
 logger = logging.getLogger("WareLensAI")
 
-class BodyAnalyzerPipeline:
-    def __init__(self, model_path: str = "models/analyzer_pose_heavy.task", **kwargs):
-        try:
-            # 실행 위치에 구애받지 않도록 파일 시스템 상대 경로 자동 보정 로직
-            if not os.path.isabs(model_path):
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.abspath(os.path.join(current_dir, "..", ".."))
-                corrected_path = os.path.join(project_root, model_path)
-                
-                if os.path.exists(corrected_path):
-                    model_path = corrected_path
+# 💡 lambda 해킹 대신 안전하고 명확한 데이터 클래스 사용
+@dataclass
+class Point3D:
+    x: float
+    y: float
+    z: float
 
-            base_options = python.BaseOptions(model_asset_path=model_path)
+class BodyAnalyzerPipeline:
+    # --- MediaPipe 랜드마크 인덱스 상수화 (가독성 극대화) ---
+    MP_NOSE = 0
+    MP_L_SHOULDER, MP_R_SHOULDER = 11, 12
+    MP_L_ELBOW, MP_R_ELBOW = 13, 14
+    MP_L_WRIST, MP_R_WRIST = 15, 16
+    MP_L_HIP, MP_R_HIP = 23, 24
+    MP_L_ANKLE, MP_R_ANKLE = 27, 28
+
+    # --- 생체역학 수학 보정 상수 ---
+    ANATOMICAL_HEIGHT_RATIO = 0.875
+    SKIN_MUSCLE_BUFFER_RATIO = 1.23
+    Z_AXIS_TOLERANCE = 0.07 # 사선 촬영 허용 오차 (7cm)
+
+    def __init__(self, model_path: str = None, **kwargs):
+        # 파라미터가 없으면 config의 안전한 절대 경로 사용
+        target_model_path = model_path or settings.pose_model_path
+        try:
+            base_options = python.BaseOptions(model_asset_path=target_model_path)
             options = vision.PoseLandmarkerOptions(
                 base_options=base_options,
                 running_mode=vision.RunningMode.IMAGE,
@@ -32,9 +48,9 @@ class BodyAnalyzerPipeline:
             )
             self.detector = vision.PoseLandmarker.create_from_options(options)
             logger.info("✅ Real-World 3D 체형 분석 엔진 로드 완료")
-        except Exception:
-            logger.exception("❌ 모델 로드 중 오류 발생")
-            raise RuntimeError("모델 파일 초기화 실패")
+        except Exception as e:
+            logger.exception(f"❌ 포즈 추정 모델 로드 실패: {target_model_path}")
+            raise RuntimeError(f"모델 파일 초기화 실패: {str(e)}")
 
     def _convert_to_mp_image(self, image_bytes: bytes) -> Tuple[np.ndarray, mp.Image]:
         nparr = np.frombuffer(image_bytes, np.uint8)
@@ -42,93 +58,135 @@ class BodyAnalyzerPipeline:
         if image_bgr is None:
             raise ValueError("올바르지 않은 이미지 포맷입니다.")
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-        return image_bgr, mp_image
+        return image_bgr, mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
 
-    def _calculate_volume_metrics(self, world_landmarks: list, actual_height_cm: float, weight_kg: float = None) -> Tuple[Dict[str, float], Dict[str, float]]:
-        """💡 물리 세계 미터 단위 랜드마크와 생체기계학적 보정을 활용하여 정밀 cm를 계산합니다."""
+    @staticmethod
+    def _get_world_dist_cm(p1, p2) -> float:
+        """두 점 사이의 3D 물리적 거리 연산 (유틸리티 함수 분리)"""
+        return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2) * 100
+
+    def _validate_pose(self, landmarks, world_landmarks) -> Tuple[bool, str]:
+        """이미지 내 인물 자세가 실측에 적합한지 3단계 관문을 통해 검증합니다."""
         
-        def get_world_dist_cm(p1, p2) -> float:
-            return math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2 + (p1.z - p2.z)**2) * 100
+        # [1차 관문] 주요 랜드마크 가시성
+        critical_indices = [
+            self.MP_NOSE, self.MP_L_SHOULDER, self.MP_R_SHOULDER, 
+            self.MP_L_HIP, self.MP_R_HIP, self.MP_L_ANKLE, self.MP_R_ANKLE
+        ]
+        for idx in critical_indices:
+            lm = landmarks[idx]
+            if lm.visibility < 0.5 or not (0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0):
+                return False, "주요 신체 축이 잘렸거나 흐릿합니다. 완벽한 정면 전신 사진을 업로드해 주세요."
 
-        # 1. 실제 키(Height) 기준 정밀 스케일 캘리브레이션
-        nose = world_landmarks[0]
-        ankle_y = (world_landmarks[27].y + world_landmarks[28].y) / 2
+        # [2차 관문] 하이앵글(항공샷) 왜곡 방어 (몸통 vs 다리 비율)
+        shoulder_y = (landmarks[self.MP_L_SHOULDER].y + landmarks[self.MP_R_SHOULDER].y) / 2
+        hip_y = (landmarks[self.MP_L_HIP].y + landmarks[self.MP_R_HIP].y) / 2
+        ankle_y = (landmarks[self.MP_L_ANKLE].y + landmarks[self.MP_R_ANKLE].y) / 2
+
+        torso_height = hip_y - shoulder_y
+        leg_height = ankle_y - hip_y
+
+        if leg_height < torso_height * 1.15:
+            return False, "상반신 위주 또는 왜곡된 앵글(항공샷 등)이 감지되었습니다. 카메라를 가슴 높이에 두고 똑바로 서주세요."
+
+        # [2.5차 관문] 사선(반측면) 촬영 감지 (Z축 깊이 오차)
+        shoulder_z_diff = abs(world_landmarks[self.MP_L_SHOULDER].z - world_landmarks[self.MP_R_SHOULDER].z)
+        hip_z_diff = abs(world_landmarks[self.MP_L_HIP].z - world_landmarks[self.MP_R_HIP].z)
+
+        if shoulder_z_diff > self.Z_AXIS_TOLERANCE or hip_z_diff > self.Z_AXIS_TOLERANCE:
+            logger.warning(f"⚠️ 사선 감지: 어깨 오차({shoulder_z_diff*100:.1f}cm), 골반 오차({hip_z_diff*100:.1f}cm)")
+            return False, "몸이 사선으로 틀어졌습니다. 정확한 측정을 위해 정면을 똑바로 바라봐 주세요."
+
+        return True, "Success"
+
+    def _calculate_volume_metrics(self, world_landmarks, actual_height_cm: float, weight_kg: float = None) -> Tuple[Dict, Dict]:
+        # 가독성을 높이기 위해 랜드마크 매핑
+        nose = world_landmarks[self.MP_NOSE]
+        shoulder_l = world_landmarks[self.MP_L_SHOULDER]
+        shoulder_r = world_landmarks[self.MP_R_SHOULDER]
+        hip_l = world_landmarks[self.MP_L_HIP]
+        hip_r = world_landmarks[self.MP_R_HIP]
+        ankle_y = (world_landmarks[self.MP_L_ANKLE].y + world_landmarks[self.MP_R_ANKLE].y) / 2
+
+        # 1. 스케일 캘리브레이션
         pure_world_height_cm = (ankle_y - nose.y) * 100
-        
-        anatomical_ratio = 0.875
-        estimated_total_world_height_cm = pure_world_height_cm / anatomical_ratio
-        calibration_factor = actual_height_cm / (estimated_total_world_height_cm if estimated_total_world_height_cm > 0 else 170.0)
+        estimated_total_height_cm = pure_world_height_cm / self.ANATOMICAL_HEIGHT_RATIO
+        calibration_factor = actual_height_cm / (estimated_total_height_cm if estimated_total_height_cm > 0 else 170.0)
 
-        # 2. 주요 신체 관절 랜드마크 변수 할당 (가독성 최적화)
-        shoulder_l, shoulder_r = world_landmarks[11], world_landmarks[12]
-        hip_l, hip_r = world_landmarks[23], world_landmarks[24]
-        
-        # 어깨에서 골반 방향으로 25% 내려온 지점을 가슴 너비 레벨(chest_l, chest_r)로 보간
-        chest_l = lambda: None
-        chest_r = lambda: None
-        for attr in ['x', 'y', 'z']:
-            setattr(chest_l, attr, getattr(shoulder_l, attr) * 0.75 + getattr(hip_l, attr) * 0.25)
-            setattr(chest_r, attr, getattr(shoulder_r, attr) * 0.75 + getattr(hip_r, attr) * 0.25)
+        # 2. 가슴 너비 레벨 보간 (안전한 데이터 클래스 사용)
+        chest_l = Point3D(
+            x = shoulder_l.x * 0.75 + hip_l.x * 0.25,
+            y = shoulder_l.y * 0.75 + hip_l.y * 0.25,
+            z = shoulder_l.z * 0.75 + hip_l.z * 0.25
+        )
+        chest_r = Point3D(
+            x = shoulder_r.x * 0.75 + hip_r.x * 0.25,
+            y = shoulder_r.y * 0.75 + hip_r.y * 0.25,
+            z = shoulder_r.z * 0.75 + hip_r.z * 0.25
+        )
 
-        # 3. 관절 중심 간 거리(Raw Distance) 측정
-        raw_shoulder_width = get_world_dist_cm(shoulder_l, shoulder_r) * calibration_factor
-        raw_hip_width = get_world_dist_cm(hip_l, hip_r) * calibration_factor
-        raw_chest_width = get_world_dist_cm(chest_l, chest_r) * calibration_factor
+        # 3. 관절 중심 간 거리 및 피부/근육 보정
+        raw_shoulder_width = self._get_world_dist_cm(shoulder_l, shoulder_r) * calibration_factor
+        raw_hip_width = self._get_world_dist_cm(hip_l, hip_r) * calibration_factor
+        raw_chest_width = self._get_world_dist_cm(chest_l, chest_r) * calibration_factor
 
-        # 💡 [방안A 핵심] MediaPipe는 뼈대(관절 중심)를 찍으므로, 피부와 근육 두께를 더해 실제 표면 사이즈로 확장합니다!
-        SKIN_MUSCLE_BUFFER_RATIO = 1.23
+        shoulder_width_cm = raw_shoulder_width * self.SKIN_MUSCLE_BUFFER_RATIO
+        hip_width_cm = raw_hip_width * self.SKIN_MUSCLE_BUFFER_RATIO
+        chest_width_cm = raw_chest_width * self.SKIN_MUSCLE_BUFFER_RATIO
 
-        shoulder_width_cm = raw_shoulder_width * SKIN_MUSCLE_BUFFER_RATIO
-        hip_width_cm = raw_hip_width * SKIN_MUSCLE_BUFFER_RATIO
-        chest_width_cm = raw_chest_width * SKIN_MUSCLE_BUFFER_RATIO
-
-        # 4. 신체 앞뒤 입체 두께(Torso Depth) 연산 (체중 입력 유무에 따른 하이브리드 보정)
+        # 4. 신체 두께(Torso Depth) 연산
         if weight_kg and weight_kg > 0:
             estimated_bmi = weight_kg / ((actual_height_cm / 100) ** 2)
-            depth_to_width_ratio = 0.58 + ((estimated_bmi - 20) * 0.015)
-            depth_to_width_ratio = max(0.45, min(depth_to_width_ratio, 0.85))
+            depth_ratio = 0.58 + ((estimated_bmi - 20) * 0.015)
+            depth_ratio = max(0.45, min(depth_ratio, 0.85))
         else:
             body_shape_ratio = hip_width_cm / shoulder_width_cm if shoulder_width_cm > 0 else 0.78
-            depth_to_width_ratio = 0.58 + (body_shape_ratio * 0.08)
+            depth_ratio = 0.58 + (body_shape_ratio * 0.08)
 
-        torso_depth_cm = chest_width_cm * depth_to_width_ratio
+        torso_depth_cm = chest_width_cm * depth_ratio
 
-        # 5. Ramanujan 타원 둘레 공식을 활용한 최종 가슴둘레(Chest Girth) 도출
-        a = chest_width_cm / 2
-        b = torso_depth_cm / 2
-        
+        # 5. Ramanujan 타원 둘레 공식
+        a, b = chest_width_cm / 2, torso_depth_cm / 2
         inside_sqrt = (3 * a + b) * (a + 3 * b)
         if inside_sqrt < 0:
-            raise ValueError("신체 랜드마크 역전 현상으로 기하학적 연산이 불가능합니다.")
+            raise ValueError("신체 랜드마크 역전 현상 발생 (기하학적 연산 불가)")
             
         chest_girth_cm = math.pi * (3 * (a + b) - math.sqrt(inside_sqrt))
 
-        measurements_cm = {
-            "shoulder_width_cm": round(shoulder_width_cm, 1),
-            "chest_width_cm": round(chest_width_cm, 1),
-            "torso_depth_cm": round(torso_depth_cm, 1),
-            "chest_girth_cm": round(chest_girth_cm, 1)
-        }
+        return (
+            {"depth_to_width_ratio": round(depth_ratio, 3)},
+            {
+                "shoulder_width_cm": round(shoulder_width_cm, 1),
+                "chest_width_cm": round(chest_width_cm, 1),
+                "torso_depth_cm": round(torso_depth_cm, 1),
+                "chest_girth_cm": round(chest_girth_cm, 1)
+            }
+        )
 
-        ratios = {
-            "depth_to_width_ratio": round(depth_to_width_ratio, 3)
-        }
-        return ratios, measurements_cm
-
-    def _draw_overlay(self, image: np.ndarray, landmarks: list) -> str:
+    def _draw_overlay(self, image: np.ndarray, landmarks) -> str:
+        """검증용 뼈대 그리기 분리"""
         img_h, img_w, _ = image.shape
         annotated_image = image.copy()
+        
         connections = [
-            (11, 12), (11, 23), (12, 24), (23, 24), (23, 27), (24, 28),
-            (11, 13), (13, 15), (12, 14), (14, 16)
+            (self.MP_L_SHOULDER, self.MP_R_SHOULDER), (self.MP_L_SHOULDER, self.MP_L_HIP), 
+            (self.MP_R_SHOULDER, self.MP_R_HIP), (self.MP_L_HIP, self.MP_R_HIP), 
+            (self.MP_L_HIP, self.MP_L_ANKLE), (self.MP_R_HIP, self.MP_R_ANKLE),
+            (self.MP_L_SHOULDER, self.MP_L_ELBOW), (self.MP_L_ELBOW, self.MP_L_WRIST), 
+            (self.MP_R_SHOULDER, self.MP_R_ELBOW), (self.MP_R_ELBOW, self.MP_R_WRIST)
         ]
+        
         for start_idx, end_idx in connections:
             pt1 = (int(landmarks[start_idx].x * img_w), int(landmarks[start_idx].y * img_h))
             pt2 = (int(landmarks[end_idx].x * img_w), int(landmarks[end_idx].y * img_h))
             cv2.line(annotated_image, pt1, pt2, (0, 255, 0), 3)
 
-        for idx in [11, 12, 13, 14, 15, 16, 23, 24, 27, 28]:
+        dots = [
+            self.MP_L_SHOULDER, self.MP_R_SHOULDER, self.MP_L_ELBOW, self.MP_R_ELBOW, 
+            self.MP_L_WRIST, self.MP_R_WRIST, self.MP_L_HIP, self.MP_R_HIP, 
+            self.MP_L_ANKLE, self.MP_R_ANKLE
+        ]
+        for idx in dots:
             pt = (int(landmarks[idx].x * img_w), int(landmarks[idx].y * img_h))
             cv2.circle(annotated_image, pt, 8, (0, 0, 255), -1)
 
@@ -136,77 +194,41 @@ class BodyAnalyzerPipeline:
         return base64.b64encode(buffer).decode('utf-8')
 
     def run(self, image_bytes: bytes, actual_height_cm: float) -> Dict[str, Any]:
-        image_bgr, mp_image = self._convert_to_mp_image(image_bytes)
-        detection_result = self.detector.detect(mp_image)
-
-        if not detection_result.pose_landmarks:
-            return {"success": False, "error_message": "사진에서 전신 신체 형상을 감지하지 못했습니다. 정면 정자세 사진인지 확인해 주세요."}
-
-        landmarks = detection_result.pose_landmarks[0]
-        world_landmarks = detection_result.pose_world_landmarks[0]
-
-        # 1차 관문: 주요 신체 랜드마크의 가시성 및 화면 내 존재 여부 1차 스캔 (코, 어깨, 골반, 발목)
-        critical_indices = [0, 11, 12, 23, 24, 27, 28]
-        for critical_idx in critical_indices:
-            lm = landmarks[critical_idx]
-            if lm.visibility < 0.5 or not (0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0):
-                return {
-                    "success": False, 
-                    "error_message": "머리(코)부터 발목까지의 주요 신체 축이 화면 밖으로 잘렸거나 흐릿합니다. 완벽한 정면 전신 사진을 업로드해 주세요."
-                }
-
-        # 2차 관문: MediaPipe의 하반신 구겨 넣기 환각 및 하이앵글(항공샷) 왜곡 방어 레이어
-        # 어깨 중심, 골반 중심, 발목 중심의 Y축 위치를 파악하여 '몸통 대비 다리 비율'을 계산합니다.
-        shoulder_y = (landmarks[11].y + landmarks[12].y) / 2
-        hip_y = (landmarks[23].y + landmarks[24].y) / 2
-        ankle_y = (landmarks[27].y + landmarks[28].y) / 2
-
-        torso_height = hip_y - shoulder_y  # 몸통 세로 픽셀 길이
-        leg_height = ankle_y - hip_y        # 다리 세로 픽셀 길이
-
-        # 정상적인 수평 정면 사진은 골반~발목(다리)이 어깨~골반(몸통)보다 무조건 1.15배 이상 길어야 합니다.
-        # 항공샷이나 반신 사진처럼 다리가 몸통보다 짧게 왜곡된 경우는 사이즈 오차가 심하므로 컷트합니다.
-        if leg_height < torso_height * 1.15:
-            return {
-                "success": False,
-                "error_message": "상반신 위주의 사진 또는 왜곡이 심한 앵글이 감지되었습니다. 정밀한 사이즈 측정을 위해 반드시 카메라를 가슴 높이에 두고 똑바로 서서 찍은 전신 사진을 사용해 주세요."
-            }
-
-        # 2.5차 관문: 사선(반측면) 촬영 감지 방어 레이어
-        # 월드 랜드마크의 Z축(카메라와의 거리, 미터 단위)을 이용해 양쪽 어깨와 골반의 깊이 차이를 계산합니다.
-        left_shoulder_z = world_landmarks[11].z
-        right_shoulder_z = world_landmarks[12].z
-        left_hip_z = world_landmarks[23].z
-        right_hip_z = world_landmarks[24].z
-
-        # 양쪽 어깨 또는 양쪽 골반의 깊이(Z축) 차이가 절대값 기준 0.07m(7cm) 이상 나면 사선으로 선 것으로 판단
-        shoulder_z_diff = abs(left_shoulder_z - right_shoulder_z)
-        hip_z_diff = abs(left_hip_z - right_hip_z)
-
-        if shoulder_z_diff > 0.07 or hip_z_diff > 0.07:
-            logger.warning(f"⚠️ 사선 각도 감지 됨: 어깨 깊이 오차({shoulder_z_diff*100:.1f}cm), 골반 깊이 오차({hip_z_diff*100:.1f}cm)")
-            return {
-                "success": False,
-                "error_message": "몸이 측면이나 사선으로 틀어진 자세가 감지되었습니다. 정확한 가슴둘레 측정을 위해 카메라를 정면으로 똑바로 바라보고 서서 다시 촬영해 주세요!"
-            }
-        
-        # 3차 관문: 인체 비례가 검증된 무결한 사진만 실제 cm 및 부피 연산으로 진입 허용
+        """메인 실행 함수: 이제 읽기 쉬운 하나의 파이프라인 스토리라인이 되었습니다."""
         try:
+            # 1. 전처리
+            image_bgr, mp_image = self._convert_to_mp_image(image_bytes)
+            detection_result = self.detector.detect(mp_image)
+
+            if not detection_result.pose_landmarks:
+                return {"success": False, "error_message": "사진에서 전신 신체 형상을 감지하지 못했습니다."}
+
+            landmarks = detection_result.pose_landmarks[0]
+            world_landmarks = detection_result.pose_world_landmarks[0]
+
+            # 2. 자세 검증 (모든 검증 로직이 분리되어 깔끔해짐)
+            is_valid, err_msg = self._validate_pose(landmarks, world_landmarks)
+            if not is_valid:
+                return {"success": False, "error_message": err_msg}
+
+            # 3. 수치 계산
             ratios, measurements_cm = self._calculate_volume_metrics(world_landmarks, actual_height_cm)
+            
+            # 4. 결과 시각화
+            annotated_image_b64 = self._draw_overlay(image_bgr, landmarks)
+
+            return {
+                "success": True,
+                "ratios": ratios,
+                "measurements_cm": measurements_cm,
+                "annotated_image_base64": annotated_image_b64,
+                "raw_landmarks": landmarks,
+                "origin_cv_img": image_bgr
+            }
+            
         except Exception as e:
             logger.error(f"[Pipeline Logic Error] {str(e)}")
             return {
                 "success": False,
-                "error_message": "신체 기하학적 치수를 계산하는 도중 오류가 발생했습니다. 카메라를 정면으로 바라본 자세인지 확인해 주세요."
+                "error_message": "신체 기하학적 치수를 계산하는 도중 오류가 발생했습니다."
             }
-
-        annotated_image_b64 = self._draw_overlay(image_bgr, landmarks)
-
-        return {
-            "success": True,
-            "ratios": ratios,
-            "measurements_cm": measurements_cm,
-            "annotated_image_base64": annotated_image_b64,
-            "raw_landmarks": landmarks,
-            "origin_cv_img": image_bgr
-        }
