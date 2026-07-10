@@ -11,7 +11,7 @@ import type {
 } from '@/types'
 import { ANALYSIS_STEPS } from '@/utils/constants'
 
-const INIT_USER_INFO: UserInfo = { height: 0, weight: 0, gender: 'female' }
+const INIT_USER_INFO: UserInfo = { height: 0, weight: 0, gender: 'male' }
 const INIT_CHECKLIST: BodyPhotoChecklist = {
   isFrontFull: false, isFullBody: false, isBodyVisible: false,
 }
@@ -97,6 +97,11 @@ interface AppStore {
   setTryOnResult:        (url: string) => void
   setTryOnError:         (msg: string) => void
   resetTryOn:            () => void
+
+  // 백엔드 /upload 응답의 top5_tryon_images 원본 배열
+  // (ResultPage에서 상품 선택 시 imageName으로 매칭해 재사용)
+  tryOnImages:    any[]
+  setTryOnImages: (images: any[] | ((prev: any[]) => any[])) => void
 
   selectedRecommendation: Recommendation | null
   setSelectedRecommendation: (rec: Recommendation | null) => void
@@ -277,6 +282,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     tryOnResultImageUrl:   null,
     tryOnError:            null,
   }),
+
+  tryOnImages: [],
+  setTryOnImages: (images) => set((s) => ({
+    tryOnImages: typeof images === 'function' ? (images as (prev: any[]) => any[])(s.tryOnImages) : images,
+  })),
 
   selectedRecommendation: null,
   setSelectedRecommendation: (rec) => set({ selectedRecommendation: rec }),
