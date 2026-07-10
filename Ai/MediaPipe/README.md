@@ -11,23 +11,26 @@ MediaPipe Pose Landmarker의 Z축(깊이) 데이터를 활용하여 단 한 장�
 ```text
 project/
 │
-├── models/                         # [최신화] 타 파트와의 자원 매핑 규격을 통일한 전역 모델 폴더
-│   └── analyzer_pose_heavy.task    # [최신화] 체형 분석용 포즈 추정 3D 핵심 가중치 파일
+├── .env                            # [신규] 전역 환경 변수 및 하이퍼파라미터 설정 파일
+├── requirements.txt                # [최신화] 의존성 충돌(NumPy 2.x) 방어 및 패키지 고정
+├── app.py                          # [최신화] FastAPI 메인 서버 (Lifespan 캐싱 및 라우팅 전담)
 │
-├── core/
-│   ├── analyzer/
-│   │   ├── __init__.py
-│   │   ├── pipeline.py             # 3D 랜드마크 추출 및 타원 공식 기반 가슴둘레(cm), 부피 연산
-│   │   └── recommender.py          # KS 표준 규격(가슴둘레) 매칭 및 입체감 기반 핏(Fit) 판정 엔진
-│   │  
-│   └── generator/
-│       └── run_catvton.py          # [최신화] 연속 루프 대응형 고정밀 가상 피팅 코어 파이프라인
+├── models/                         # [최신화] 타 파트와의 자원 매핑 규격을 통일한 전역 모델 폴더
+│   └── analyzer_pose_heavy.task    # 체형 분석용 포즈 추정 3D 핵심 가중치 파일
 │
 ├── CatVTON/                        # [필수 클론] CatVTON 오픈소스 의존성 및 모델 디렉토리
 │
-├── app.py                          # [최신화] Lifespan 컨텍스트 및 자바 백엔드 공용 에러 레이어가 통합된 메인 웹 API 서버
-├── requirements.txt                # [최신화] CUDA 인덱스 링크 및 NumPy 1.x 호환 패키지 목록
-└── README.md                       # 이 파일
+└── core/                           # [신규] 핵심 비즈니스 로직 모듈화 폴더
+    ├── config.py                   # Pydantic 기반 환경 변수 안전 관리자
+    │
+    ├── analyzer/                   # Track A: 체형 분석 및 사이즈 추천 도메인
+    │   ├── __init__.py
+    │   ├── pipeline.py             # 3D 랜드마크 추출 및 타원 공식 기반 가슴둘레/부피 연산
+    │   └── recommender.py          # KS 표준 규격 매칭 및 두께 비례 기반 핏(Fit) 판정 엔진
+    │  
+    └── generator/                  # Track B: 가상 피팅 도메인
+        ├── __init__.py
+        └── run_catvton.py          # [최신화] SegFormer 마스킹 및 CatVTON 인페인팅 통합 추론 엔진
 ```
 
 ---
@@ -169,17 +172,29 @@ python app.py
 
 | 파일명 | 역할 |
 |---|---|
-| `app.py` | FastAPI 엔드포인트 라우팅, 전역 메모리 세션 캐싱(`USER_CACHE`), 3D 파이프라인 및 가상 착장 엔진 싱글톤 자원 로드 제어 |
-| `core/analyzer/pipeline.py` | MediaPipe의 Z축 데이터를 기반으로 가중치 파일 상대 경로를 정규화하여 탐색하고, Ramanujan 타원 둘레 공식을 결합하여 신체 실측 부피값 도출 |
-| `core/analyzer/recommender.py` | 추출된 가슴둘레와 키를 대조하여 최적 기성복 사이즈 채점 및 몸통 두께 비례에 따른 맞춤형 핏(Fit) 필터링 |
-| `core/generator/run_catvton.py` | SegFormer 기반 상의 전처리 마스킹 연산 및 다중 연속 루프 구동 시 가비지 컬렉션을 보장하는 오피셜 CatVTON 추론 컴포넌트 |
+| `.env` / `config.py` | 서버 포트, 이미지 해상도, 모델 추론 스텝 수 등 전역 환경 변수 관리 |
+| `app.py` | FastAPI 엔드포인트 라우팅, 전역 메모리 세션 캐싱, 듀얼 트랙 AI 모델 로드 제어 |
+| `core/analyzer/pipeline.py` | MediaPipe의 Z축 데이터를 기반으로 신체 실측 부피값 도출 및 예외 자세(사선, 하이앵글 등) 차단 |
+| `core/analyzer/recommender.py` | 추출된 가슴둘레와 키를 대조하여 1/2순위 사이즈를 안전하게 정렬하고, 몸통 두께 비례에 따라 최종 핏 보정 |
+| `core/generator/run_catvton.py` | SegFormer 기반 스마트 크롭/마스킹 연산 및 VRAM OOM 방어 가비지 컬렉션을 포함한 VTON 추론 |
 
 ---
 
 ## 🔧 설정값 변경 방법 (Configuration)
 
-`core/analyzer/recommender.py` 상단의 `KS_SIZE_CHART` 딕셔너리를 수정하면 남성(MALE) 및 여성(FEMALE)의 기성복 채점 매칭 기준(가슴둘레 및 키)을 브랜드 자사몰 규격에 맞게 자유롭게 커스텀할 수 있습니다.
+### 1. 전역 환경 및 AI 추론 설정 (`.env`)
+프로젝트 최상위 경로의 `.env` 파일을 수정하여, 코드 수정 없이 런타임 환경과 디퓨전 모델의 하이퍼파라미터를 제어할 수 있습니다.
+```env
+SERVER_PORT=8002          # API 서버 포트
+TARGET_WIDTH=768          # 가상 피팅 출력 가로 해상도
+TARGET_HEIGHT=1024        # 가상 피팅 출력 세로 해상도
+INFERENCE_STEPS=40        # 디퓨전 스텝 수 (속도/품질 타협점)
+GUIDANCE_SCALE=2.9        # 골든 파라미터 밸런스
+DEVICE=cuda               # 연산 장치
+```
 
+### 2. 브랜드 맞춤형 KS 규격 커스텀 (core/analyzer/recommender.py)
+recommender.py 상단의 KS_SIZE_CHART 딕셔너리를 수정하면 남성(MALE) 및 여성(FEMALE)의 기성복 채점 매칭 기준(가슴둘레 및 키)을 자사몰이나 특정 브랜드 규격에 맞게 자유롭게 커스텀할 수 있습니다.
 ```python
 KS_SIZE_CHART = {
     "MALE": {
