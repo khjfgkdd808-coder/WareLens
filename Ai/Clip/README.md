@@ -13,7 +13,7 @@ project/
 ├── fashion_dataset/       # 검색 대상 의류 이미지 (jpg, jpeg, png, webp)
 ├── test_img/              # 쿼리 이미지 1장 이상 (jpg, jpeg, png, webp)
 ├── cache/                 # 자동 생성되는 캐시 폴더
-│   ├── vectors.npy        # 데이터셋 임베딩 벡터 행렬 (N, 512)
+│   ├── vectors.npy        # 데이터셋 임베딩 벡터 행렬 (N, 768)
 │   └── filenames.npy      # 데이터셋 이미지 경로 목록
 │
 ├── main.py                # 전체 실행 흐름 관리 (CLI 단독 실행용)
