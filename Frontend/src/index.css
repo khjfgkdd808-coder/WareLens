@@ -27,4 +27,32 @@
     user-select: none;
     -webkit-user-select: none;
   }
+
+  /* ── 내 체형 분석 카드 레이아웃 ──────────────────────────────
+     photo(사진) / guide(촬영 가이드) / quality(결과 박스) / actions(버튼)
+     4개 영역을 grid-template-areas로 배치.
+     - 모바일: 세로 1열 스택 (photo → guide → quality → actions)
+     - sm 이상: 좌측(6fr)에 photo가 2행을 병합해 세로로 크게 차지,
+                우측(4fr)엔 guide 아래로 quality가 쌓이고,
+                actions는 맨 아래에서 두 컬럼 전체 폭을 사용
+     빈 영역(quality/actions는 업로드 전엔 비어있음)에는 요소가 없으므로
+     row-gap 대신 각 영역에 margin-top을 줘서 불필요한 여백이 생기지 않게 함 */
+  .body-analysis-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-areas: "photo" "guide" "quality" "actions";
+    column-gap: 1.5rem;
+  }
+  .body-analysis-grid > .ga-photo    { grid-area: photo; }
+  .body-analysis-grid > .ga-guide    { grid-area: guide; margin-top: 1.25rem; }
+  .body-analysis-grid > .ga-quality  { grid-area: quality; margin-top: 1rem; }
+  .body-analysis-grid > .ga-actions  { grid-area: actions; margin-top: 1rem; }
+
+  @media (min-width: 640px) {
+    .body-analysis-grid {
+      grid-template-columns: 6fr 4fr;
+      grid-template-areas: "photo guide" "photo quality" "actions actions";
+    }
+    .body-analysis-grid > .ga-guide { margin-top: 0; }
+  }
 }

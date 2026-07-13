@@ -13,7 +13,7 @@ export const ANALYSIS_STEPS: Record<
   PENDING:         { label: '준비 중',               description: '분석 요청을 준비하고 있습니다.',             progress: 0   },
   UPLOADING:       { label: '사진 업로드 완료',        description: '이미지가 서버에 전달됐습니다.',              progress: 20  },
   BODY_ANALYZING:  { label: '체형 분석 중',           description: 'AI가 이미지를 분석 중입니다...',            progress: 45  },
-  STYLE_ANALYZING: { label: 'MediaPipe 좌표 계산 중', description: 'MediaPipe 신체 좌표를 계산하는 중...',       progress: 70  },
+  STYLE_ANALYZING: { label: '스타일 분석 중',         description: '취향 스타일을 분석하고 있습니다...',        progress: 70  },
   GENERATING:      { label: '추천 의류 탐색 중',       description: '추천 의류를 찾는 중...',                   progress: 88  },
   DONE:            { label: '분석 완료!',             description: '결과가 준비됐습니다.',                      progress: 100 },
   ERROR:           { label: '분석 실패',              description: '오류가 발생했습니다.',                      progress: 0   },

@@ -10,14 +10,12 @@
  *
  * 기능 로직(업로드·검증·상태·API)은 기존 그대로 유지
  */
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Loader2, Sparkles, CheckCircle2, Plus, X } from 'lucide-react'
+import { ArrowRight, Sparkles, CheckCircle2, Plus, X } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import FullBodyUploadZone from '@/components/upload/FullBodyUploadZone'
 import BodyInfoForm       from '@/components/upload/BodyInfoForm'
 import NoticeCard         from '@/components/common/NoticeCard'
-import { uploadImages }   from '@/api/mockApi'
 import { validateImageFile } from '@/utils/helpers'
 
 const GOOD_TIPS = ['정면', '전신 노출', '밝은 배경', '몸 형태가 보이는 옷']
@@ -160,11 +158,9 @@ export default function HomePage() {
     clothingPreviews, fullBodyPreview, userInfo,
     photoValidationStatus,
     setUserInfoError, clearUserInfoErrors,
-    setTaskId, showGlobalLoading, hideGlobalLoading,
-    addToast, isUploadReady, openErrorModal,
+    addToast, isUploadReady,
   } = useAppStore()
 
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const ready = isUploadReady()
 
   const steps = [
@@ -172,29 +168,16 @@ export default function HomePage() {
     { label: '체형 분석',    sub: photoValidationStatus === 'success' ? '완료' : '대기', done: photoValidationStatus === 'success' },
     { label: '추천 생성',    sub: ready ? '준비 완료' : '대기', done: ready },  ]
 
-  const handleSubmit = async () => {
+  // AI 처리(uploadImages 호출)는 더 이상 여기서 하지 않습니다.
+  // 여기서는 입력값 검증만 하고, 실제 업로드+분석 대기는 LoadingPage에서 수행합니다.
+  const handleSubmit = () => {
     clearUserInfoErrors()
     if (!fullBodyPreview)                       { addToast('error', '전신 사진을 등록해 주세요.'); return }
     if (photoValidationStatus === 'validating') { addToast('warning', 'AI 사진 검증이 완료될 때까지 기다려 주세요.'); return }
     if (photoValidationStatus !== 'success')    { addToast('error', '전신 사진 AI 검증을 통과해야 합니다.'); return }
     if (!userInfo.height) { setUserInfoError('height', '키를 입력해 주세요.'); return }
 
-    setIsSubmitting(true)
-    showGlobalLoading('AI가 스타일을 분석 중입니다...')
-    try {
-      const fd = new FormData()
-      clothingPreviews.forEach((p) => fd.append('clothingImages', p.file))
-      fd.append('fullBodyImage', fullBodyPreview.file)
-      fd.append('userInfo', JSON.stringify(userInfo))
-      const { taskId } = await uploadImages(fd)
-      setTaskId(taskId)
-      navigate(`/loading/${taskId}`)
-    } catch {
-      openErrorModal('UPLOAD_FAILED', () => handleSubmit())
-    } finally {
-      setIsSubmitting(false)
-      hideGlobalLoading()
-    }
+    navigate('/loading')
   }
 
   return (
@@ -216,11 +199,16 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* ── 좌(전신사진) / 우(스타일 등록 + 신체정보) ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* ── 좌(전신사진) / 우(스타일 등록 + 신체정보) ──
+             items-stretch: lg 2컬럼일 때 두 그리드 아이템의 높이를 같은 행(row) 기준으로 맞춤
+             (grid-cols-1이 되는 모바일/태블릿에서는 각 아이템이 자기 행에 단독으로 배치되므로
+              stretch가 자연 높이 그대로 적용되어 부작용 없음) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
 
-          {/* ══ 왼쪽: 전신 사진 + 촬영 가이드 ══════════════════ */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* ══ 왼쪽: 전신 사진 + 촬영 가이드 ══════════════════
+               h-full + flex flex-col: 오른쪽 컬럼과 같은 높이로 늘어난 만큼을
+               아래 content 영역(flex-1)이 흡수하도록 함 */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden h-full flex flex-col">
             <div className="px-6 pt-6 pb-4 border-b border-gray-50">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -248,14 +236,16 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* 본문: 사진 영역 + 오른쪽 가이드 텍스트 */}
-            <div className="px-6 py-5 flex flex-col sm:flex-row gap-5">
-              <div className="flex-shrink-0 mx-auto sm:mx-0">
-                <FullBodyUploadZone />
-              </div>
+            {/* 본문: photo / guide / quality / actions 4개 영역을 가진 grid
+                 (레이아웃 정의는 index.css의 .body-analysis-grid 참고)
+                 - FullBodyUploadZone은 루트가 display:contents 라서
+                   그 자식들(ga-photo/ga-quality/ga-actions)이 이 grid에 직접 배치됨
+                 - flex-1: 카드가 오른쪽 컬럼 높이에 맞춰 늘어날 때 남는 공간을 흡수 */}
+            <div className="px-6 py-5 body-analysis-grid flex-1">
+              <FullBodyUploadZone />
 
-              {/* 촬영 가이드 — 오른쪽 영역 배치 */}
-              <div className="flex-1 space-y-3 min-w-0">
+              {/* 촬영 가이드 — 우측 상단 영역 */}
+              <div className="ga-guide space-y-3 min-w-0">
                 <div>
                   <p className="text-xs font-bold text-green-700 mb-1.5 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />좋은 사진
@@ -284,8 +274,11 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ══ 오른쪽: 나의 스타일 등록(핵심) + 신체 정보 ════════ */}
-          <div className="flex flex-col gap-6">
+          {/* ══ 오른쪽: 나의 스타일 등록(핵심) + 신체 정보 ════════
+               h-full + justify-between: 왼쪽 카드가 더 커져 컬럼 전체 높이가 늘어나면
+               두 카드 사이 간격(gap)이 넓어지며 여유 공간을 흡수 → 오른쪽 컬럼 하단이
+               항상 왼쪽 카드 하단과 같은 위치에 맞춰짐 */}
+          <div className="h-full flex flex-col gap-6 justify-between">
 
             {/* 나의 스타일 등록 — 핵심 입력값으로 격상, 항상 노출 */}
             <StyleRegister />
@@ -360,22 +353,17 @@ export default function HomePage() {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting}
             className="flex-shrink-0 flex items-center gap-2 rounded-xl font-bold transition-all duration-150"
             style={{
               padding: '12px 24px', fontSize: '14px', border: 'none',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              backgroundColor: ready && !isSubmitting ? '#2563eb' : '#e5e7eb',
-              color:           ready && !isSubmitting ? '#ffffff'  : '#9ca3af',
-              boxShadow: ready && !isSubmitting ? '0 4px 14px rgba(37,99,235,0.4)' : 'none',
+              cursor: 'pointer',
+              backgroundColor: ready ? '#2563eb' : '#e5e7eb',
+              color:           ready ? '#ffffff'  : '#9ca3af',
+              boxShadow: ready ? '0 4px 14px rgba(37,99,235,0.4)' : 'none',
               whiteSpace: 'nowrap',
             }}
           >
-            {isSubmitting ? (
-              <><Loader2 className="w-4 h-4 animate-spin" />분석 중...</>
-            ) : (
-              <><Sparkles className="w-4 h-4" />AI 추천 받기<ArrowRight className="w-4 h-4" /></>
-            )}
+            <Sparkles className="w-4 h-4" />AI 추천 받기<ArrowRight className="w-4 h-4" />
           </button>
         </div>
 
