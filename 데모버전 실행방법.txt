@@ -13,22 +13,21 @@ uvicorn app:app --host 0.0.0.0 --port 8001
 
 ------------------------------------------------------------------
 MediaPipe 실행
-#가상환경 생성
+# 구글드라이브에서 .env(환경파일) 가져오기
+
+# 가상환경 생성(3.12 버전 필요)
 py -3.12 -m venv venv
 
-#가상환경 활성화 
+# 가상환경 활성화 
 .\venv\Scripts\Activate.ps1
 
-#
-C:\Users\user1\Desktop\warelendstest\Ai\MediaPipe\venv\Scripts\python.exe -m pip install --upgrade pip
-#
-
+# 패키지 설치
 pip install -r requirements.txt
 
-#
+# CatVTON 모델 가져오기
 git clone https://github.com/Zheng-Chong/CatVTON.git
 
-#
+# 서버 실행
 python app.py
 
 ------------------------------------------
