@@ -11,6 +11,7 @@ CLIP 모델과 코사인 유사도를 이용해 입력 이미지와 유사한 �
 project/
 │
 ├── fashion_dataset/       # 검색 대상 의류 이미지 (jpg, jpeg, png, webp)
+├── archive/               # 데이터셋에서 제거된 이미지 보관 (복구 가능)
 ├── test_img/              # 쿼리 이미지 1장 이상 (jpg, jpeg, png, webp)
 ├── cache/                 # 자동 생성되는 캐시 폴더
 │   ├── vectors.npy        # 데이터셋 임베딩 벡터 행렬 (N, 768)
@@ -22,6 +23,7 @@ project/
 ├── exceptions.py          # 백엔드 연동용 커스텀 예외 클래스
 ├── explainer.py           # CLIP 텍스트 프로브 기반 추천 이유 생성
 ├── build_vectors.py       # 데이터셋 임베딩 생성 및 캐시 저장
+├── remove_items.py        # 데이터셋 항목 제거 스크립트
 ├── detector.py            # YOLO 기반 사람 영역 탐지/crop
 ├── embedding.py           # CLIP 모델 로드 / 이미지 임베딩 생성
 ├── recommend.py           # 유사도 계산 / Top-K 추천 / 색상 보정 / 시각화 / CSV 저장
@@ -29,6 +31,7 @@ project/
 ├── cache_manager.py       # 캐시 저장 / 로드
 ├── metadata.py            # 의류 메타데이터(csv) 로드 및 결합
 ├── metadata.csv           # 이미지별 속성 정보 (category, color, pattern 등)
+├── exclude_list.txt       # 데이터셋에서 제거할 이미지 파일명 목록
 ├── utils.py               # 공통 유틸리티 (이미지 로드, 경로 처리)
 ├── result.csv             # 실행 결과 (자동 생성, main.py 기준 위치)
 └── README.md              # 이 파일
@@ -178,6 +181,7 @@ rank,filename,score,clip_score,color_score,reason,category,sub_category,...
 | `exceptions.py` | 백엔드 연동용 커스텀 예외 클래스 (에러 코드/HTTP 상태코드) |
 | `explainer.py` | CLIP 텍스트 프로브로 추천 이유 자동 생성 |
 | `build_vectors.py` | 데이터셋 임베딩 생성 및 캐시 저장 (YOLO crop 포함) |
+| `remove_items.py` | 데이터셋 항목 제거 스크립트 (이미지 이동 + metadata 삭제 + 캐시 재생성) |
 | `detector.py` | YOLO로 사람 영역 탐지 및 crop |
 | `embedding.py` | CLIP 모델 로드, 이미지 → 벡터 변환 |
 | `recommend.py` | 유사도 계산, Top-K 추천, 색상 점수 보정, 시각화, CSV 저장 |
@@ -185,6 +189,7 @@ rank,filename,score,clip_score,color_score,reason,category,sub_category,...
 | `cache_manager.py` | 캐시 저장/로드 |
 | `metadata.py` | metadata.csv 로드 및 추천 결과에 결합 |
 | `utils.py` | 이미지 로드, 경로 처리 등 공통 함수 |
+| `exclude_list.txt` | 데이터셋에서 제거할 이미지 파일명 목록 (remove_items.py에서 사용) |
 
 ---
 
@@ -210,6 +215,38 @@ CANDIDATE_POOL_MULTIPLIER = 3  # 색상 보정을 위해 1차로 가져올 후�
 | `main.py` 실행 시 캐시 없음 오류 | `python build_vectors.py` 먼저 실행 |
 | 데이터셋에 이미지 추가/삭제 | `python build_vectors.py` 재실행 |
 | 캐시를 초기화하고 싶을 때 | `cache/` 폴더 삭제 후 재실행 |
+
+---
+
+## 데이터셋 항목 제거 (remove_items.py)
+
+품질 기준에 맞지 않는 이미지(오분류, 다수 객체 포함 등)를 데이터셋에서 제거할 때 사용합니다.
+이미지는 완전 삭제가 아니라 `archive/` 폴더로 이동하므로 실수 시 복구할 수 있습니다.
+
+### 사용 방법
+
+```
+1. exclude_list.txt에 제거할 파일명을 한 줄씩 추가
+   # 주석은 # 으로 시작
+   12345.jpg
+   67890.jpg
+
+2. python remove_items.py 실행
+
+3. 확인 프롬프트에서 y 입력
+```
+
+### 처리 순서
+
+1. `fashion_dataset/` → `archive/` 폴더로 이미지 이동
+2. `metadata.csv`에서 해당 행 삭제
+3. `build_vectors.py` 자동 실행 → 캐시 재생성 (기존 캐시 자동 덮어쓰기)
+
+### 주의사항
+
+- `exclude_list.txt`에 있는 파일이 `fashion_dataset/`에 없으면 경고만 출력하고 계속 진행합니다.
+- 나중에 같은 이미지를 다시 추가하려면 `archive/`에서 `fashion_dataset/`으로 이동 후 `build_vectors.py`를 재실행하면 됩니다.
+- 제거 후에는 `metadata.csv`도 함께 정리되므로 별도로 수정할 필요 없습니다.
 
 ---
 
