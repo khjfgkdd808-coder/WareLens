@@ -227,6 +227,7 @@ Ai/Clip/fashion_dataset/
 Ai/Clip/test_img/
 Ai/Clip/cache/
 Ai/Clip/result.csv
+Ai/Clip/archive1/
 
 # numpy cache
 *.npy
