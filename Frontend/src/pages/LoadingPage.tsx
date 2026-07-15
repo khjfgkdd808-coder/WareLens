@@ -98,6 +98,16 @@ export default function LoadingPage() {
           }
 
           // 2) Try-On 원본 5장 (ResultPage에서 imageName으로 매칭해 사용)
+          // [진단 로그] 백엔드가 실제로 몇 개의 사전 피팅 결과를 내려주는지 확인 (신규)
+          console.log('[LoadingPage] top5_tryon_images.length:', res?.top5_tryon_images?.length ?? 0)
+          console.log(
+            '[LoadingPage] top5_tryon_images의 garment_info.image_name 목록:',
+            (res?.top5_tryon_images ?? []).map((t: any) => t?.garment_info?.image_name),
+          )
+          console.log(
+            '[LoadingPage] clip_recommendations의 image_name 목록(순서대로):',
+            (res?.clip_recommendations?.recommendations ?? []).map((r: any) => r?.image_name),
+          )
           setTryOnImages(res?.top5_tryon_images ?? [])
 
           // 3) CLIP 추천 → 상품 카드 데이터로 매핑
@@ -113,6 +123,8 @@ export default function LoadingPage() {
               color: item.color,
               fabric: item.fabric,
               fit: item.fit,
+              usage: item.usage,
+              reason: item.reason,
               isWishlisted: false,
             }),
           )
@@ -172,7 +184,7 @@ export default function LoadingPage() {
                 </svg>
               )}
             </div>
-            <h1 className="text-xl font-bold text-gray-900">{isError ? '분석 실패' : 'AI 분석 중'}</h1>
+            <h1 className="text-xl font-bold text-gray-900">{isError ? '분석 실패' : '스타일 분석 중'}</h1>
             <p className="text-sm text-gray-500 mt-1">{isError ? errInfo.desc : '잠시만 기다려 주세요.'}</p>
           </div>
 

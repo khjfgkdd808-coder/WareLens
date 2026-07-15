@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Heart, MapPin, Crown, Check, ShoppingBag } from 'lucide-react'
+import { Heart, MapPin, Crown, Check, ShoppingBag, Loader2 } from 'lucide-react'
 
 import type { RecommendationProduct } from '@/types/recommendation'
 import RecommendationReason, { RecommendationTags } from './RecommendationReason'
@@ -25,6 +25,8 @@ interface RecommendationCardProps {
   isWishlisted: boolean
   onSelect: (p: RecommendationProduct) => void
   onWishlist: (id: string) => void
+  /** 가상피팅(POST /api/recommendations/tryon) 요청 진행 중일 때 true — 버튼 비활성화용 (신규) */
+  disabled?: boolean
 }
 
 /** Top1 전용 "BEST MATCH" 리본 / Top2~5는 순번 배지 */
@@ -75,7 +77,7 @@ function RankBadge({ rank }: { rank: number }) {
  * 이 컴포넌트에서는 표시 레이아웃과 스타일만 변경합니다.
  */
 export default function RecommendationCard({
-  product, rank, isSelected, isWishlisted, onSelect, onWishlist,
+  product, rank, isSelected, isWishlisted, onSelect, onWishlist, disabled = false,
 }: RecommendationCardProps) {
   const [showLocation, setShowLocation] = useState(false)
 
@@ -88,7 +90,7 @@ export default function RecommendationCard({
   return (
     <>
       <div
-        onClick={() => onSelect(product)}
+        onClick={() => { if (!disabled) onSelect(product) }}
         className={[
           'group relative rounded-2xl border cursor-pointer transition-all duration-200',
           isSelected
@@ -161,15 +163,18 @@ export default function RecommendationCard({
 
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onSelect(product) }}
+            onClick={(e) => { e.stopPropagation(); if (!disabled) onSelect(product) }}
+            disabled={disabled}
             className={`flex-1 flex items-center justify-center gap-1 text-[11px] font-bold rounded-lg py-1.5
                        whitespace-nowrap transition-colors ${
               isSelected
                 ? 'text-white bg-blue-700 hover:bg-blue-800'
                 : 'text-white bg-blue-600 hover:bg-blue-700'
-            }`}
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
-            {isSelected
+            {isSelected && disabled
+              ? <><Loader2 className="w-3 h-3 flex-shrink-0 animate-spin" /> 피팅 중...</>
+              : isSelected
               ? <><Check className="w-3 h-3 flex-shrink-0" /> 가상피팅 적용됨</>
               : <><ShoppingBag className="w-3 h-3 flex-shrink-0" /> 가상피팅 적용</>
             }

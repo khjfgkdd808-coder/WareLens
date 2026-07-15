@@ -21,51 +21,6 @@ import { validateImageFile } from '@/utils/helpers'
 const GOOD_TIPS = ['정면', '전신 노출', '밝은 배경', '몸 형태가 보이는 옷']
 const BAD_TIPS  = ['측면', '거울 셀카', '발끝 잘림', '배경과 인물 구분 어려움']
 
-/* ── STEP 진행 카드 (1/3 2/3 3/3 영역 개선) ─────────────────── */
-function StepProgress({ steps }: { steps: { label: string; sub: string; done: boolean }[] }) {
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {steps.map((s, i) => (
-        <div
-          key={s.label}
-          className="rounded-xl px-3 py-2.5 transition-all"
-          style={{
-            backgroundColor: s.done ? '#eff6ff' : '#f9fafb',
-            border: s.done ? '1.5px solid #93c5fd' : '1.5px solid #e5e7eb',
-          }}
-        >
-          <div className="flex items-center gap-1.5 mb-1">
-            <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-              style={{
-                backgroundColor: s.done ? '#2563eb' : '#e5e7eb',
-                color:           s.done ? '#ffffff'  : '#9ca3af',
-              }}
-            >
-              {s.done ? (
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              ) : i + 1}
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wide"
-                  style={{ color: s.done ? '#2563eb' : '#9ca3af' }}>
-              STEP {i + 1}
-            </span>
-          </div>
-          <p className="text-xs font-semibold leading-tight"
-             style={{ color: s.done ? '#1e3a8a' : '#6b7280' }}>
-            {s.label}
-          </p>
-          <p className="text-[10px] mt-0.5" style={{ color: s.done ? '#3b82f6' : '#9ca3af' }}>
-            {s.sub}
-          </p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /* ── 나의 스타일 등록 (취향 이미지) — 핵심 입력 영역 ─────────── */
 function StyleRegister() {
   const { clothingPreviews, addClothingImage, removeClothingImage, addToast } = useAppStore()
@@ -98,10 +53,10 @@ function StyleRegister() {
           <div>
             <h2 className="text-base font-bold text-gray-900">
               나의 스타일 등록
-              <span className="ml-2 text-xs font-semibold text-amber-600">추천 핵심 입력값</span>
+              <span className="ml-2 text-xs font-semibold text-amber-600">스타일 분석 기준</span>
             </h2>
             <p className="text-xs text-gray-400 mt-0.5">
-              좋아하는 옷을 등록하면 AI가 비슷한 스타일을 추천합니다
+              좋아하는 옷을 등록하면 비슷한 스타일을 추천합니다
             </p>
           </div>
         </div>
@@ -190,12 +145,12 @@ export default function HomePage() {
             <Sparkles className="w-3 h-3" />AI 취향 + 체형 기반 추천
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-snug">
-            나에게 어울리는 옷,<br/>
-            <span style={{ color: '#2563eb' }}>AI가 찾아드립니다</span>
+            취향과 체형에 맞는,<br/>
+            <span style={{ color: '#2563eb' }}>스타일을 추천해드립니다</span>
           </h1>
           <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
             좋아하는 스타일과 체형 정보를 등록하면<br/>
-            AI가 취향과 체형에 맞는 의류를 추천합니다
+            나에게 맞는 의류를 추천합니다
           </p>
         </div>
 
@@ -314,12 +269,6 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* ── STEP 진행 (1/3 2/3 3/3 영역 개선) ── */}
-        <div className="mt-6 bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-          <p className="text-xs font-bold text-gray-700 mb-3">추천 준비 과정</p>
-          <StepProgress steps={steps} />
         </div>
 
         <div className="mt-6">

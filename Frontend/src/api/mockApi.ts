@@ -41,3 +41,23 @@ export const uploadImages = async (formData: FormData) => {
   console.log("=== 백엔드 /upload 응답 확인 ===", response.data);
   return response.data;
 };
+
+// [신규] 상품 단위 온디맨드 가상피팅 요청 (POST /api/recommendations/tryon)
+// 백엔드는 garmentInfo.image_name 만으로 캐시 키를 만들어 동일 상품 재요청 시
+// 캐시된 결과를 반환하므로, 프론트에서도 이미 피팅된 상품은 재요청하지 않습니다.
+export const requestVirtualTryOn = async (taskId: string, garmentInfo: Record<string, unknown>) => {
+  const response = await apiClient.post('/api/recommendations/tryon', {
+    taskId,
+    garment_info: garmentInfo,
+  });
+  return response.data;
+};
+
+// [신규] 가상피팅 결과 이미지 갤러리 저장 (POST /api/recommendations/gallery/save-fitting)
+export const saveFittingToGallery = async (taskId: string, file: File) => {
+  const formData = new FormData();
+  formData.append('taskId', taskId);
+  formData.append('file', file);
+  const response = await apiClient.post('/api/recommendations/gallery/save-fitting', formData);
+  return response.data;
+};
