@@ -27,7 +27,6 @@ export default function UploadPage() {
     if (clothingPreviews.length === 0) { addToast('error', '의류 이미지를 1장 이상 업로드해 주세요.'); return }
     if (!fullBodyPreview)              { addToast('error', '전신 사진을 업로드해 주세요.'); return }
     if (!userInfo.height)              { setUserInfoError('height', '키를 입력해 주세요.'); return }
-    if (!userInfo.weight)              { setUserInfoError('weight', '몸무게를 입력해 주세요.'); return }
 
     setIsSubmitting(true)
     showGlobalLoading('서버에 데이터를 전송 중입니다...')
@@ -119,7 +118,7 @@ return (
               {[
                 { done: clothingPreviews.length > 0, label: `의류 이미지 (${clothingPreviews.length}/1장 이상)` },
                 { done: !!fullBodyPreview,            label: '전신 사진' },
-                { done: userInfo.height > 0 && userInfo.weight > 0, label: '신체 정보 (키·몸무게)' },
+                { done: userInfo.height > 0, label: '신체 정보 (키)' },
               ].map((c) => (
                 <span key={c.label} className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${c.done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
                   {c.done ? '✓' : '○'} {c.label}

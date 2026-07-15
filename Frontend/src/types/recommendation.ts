@@ -15,6 +15,10 @@ export interface RecommendationProduct extends Product {
   color?: string
   fabric?: string
   fit?: string
+  /** CLIP metadata.csv의 usage 원본 값 (예: "Casual", "Formal"). 태그 표시(스타일)에 사용 */
+  usage?: string
   /** top5_tryon_images[i].garment_info.image_name 과 매칭하기 위한 키 */
   imageName?: string
+   /** AI(CLIP)가 생성한 추천 이유 */
+  reason?: string
 }
